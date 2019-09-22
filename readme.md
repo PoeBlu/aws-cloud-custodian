@@ -2,9 +2,9 @@
 
 **_c7n-mailer**
 
-Dockerfile
-environment/accounts.yml
-environment/mailer.yml
+- Dockerfile
+- environment/accounts.yml
+- environment/mailer.yml
 
 **templates**
 
@@ -17,8 +17,6 @@ policies alligned between prod and nonprod
 **support directory contains**
 
 some handy script that I used to debug the deployment
-
-Refer to: 
 
 **git repo**
 
