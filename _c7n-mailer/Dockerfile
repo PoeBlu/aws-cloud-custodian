@@ -6,6 +6,7 @@ LABEL name="custodian" \
       homepage="http://github.com/cloud-custodian/cloud-custodian" \
       maintainer="Custodian Community <https://cloudcustodian.io>"
 
+RUN cd _c7n-mailer
 ADD setup.py requirements.txt README.md /src/
 ADD c7n /src/c7n/
 ADD tools /src/tools/
