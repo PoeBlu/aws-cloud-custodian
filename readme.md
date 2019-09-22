@@ -1,4 +1,22 @@
-# Cloud-custodian (c7n)
+# AWS Cloud Custodian (c7n)
+
+**_c7n-mailer**
+
+Dockerfile
+environment/accounts.yml
+environment/mailer.yml
+
+**templates**
+
+left it blank intentionally, you can create your own template of use default.
+
+**policies directory contains**
+
+policies alligned between prod and nonprod
+
+**support directory contains**
+
+some handy script that I used to debug the deployment
 
 Refer to: 
 
