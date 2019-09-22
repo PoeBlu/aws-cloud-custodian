@@ -18,9 +18,11 @@ Cloud Custodian has following key features:
 Its used to send outbound mail delivery.
 
 The _c7n-mailer directory structure:
+```
 - Dockerfile
 - environment/accounts.yml (used for c7n-org deployment)
 - environment/mailer.yml (used to specify mailer properties like SQS, SMTP details)
+```
 
 **templates**
 
