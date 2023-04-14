@@ -53,13 +53,10 @@ class URIResolver(object):
             Bucket=parsed.netloc,
             Key=parsed.path[1:])
         if parsed.query:
-            params.update(dict(parse_qsl(parsed.query)))
+            params |= dict(parse_qsl(parsed.query))
         result = client.get_object(**params)
         body = result['Body'].read()
-        if isinstance(body, str):
-            return body
-        else:
-            return body.decode('utf-8')
+        return body if isinstance(body, str) else body.decode('utf-8')
 
 
 class ValuesFrom(object):
@@ -143,20 +140,20 @@ class ValuesFrom(object):
             if 'expr' in self.data:
                 res = jmespath.search(self.data['expr'], data)
                 if res is None:
-                    log.warning('ValueFrom filter: %s key returned None' % self.data['expr'])
+                    log.warning(f"ValueFrom filter: {self.data['expr']} key returned None")
                 return res
-        elif format == 'csv' or format == 'csv2dict':
+        elif format in ['csv', 'csv2dict']:
             data = csv.reader(io.StringIO(contents))
             if format == 'csv2dict':
                 data = {x[0]: list(x[1:]) for x in zip(*data)}
+            elif isinstance(self.data.get('expr'), int):
+                return [d[self.data['expr']] for d in data]
             else:
-                if isinstance(self.data.get('expr'), int):
-                    return [d[self.data['expr']] for d in data]
                 data = list(data)
             if 'expr' in self.data:
                 res = jmespath.search(self.data['expr'], data)
                 if res is None:
-                    log.warning('ValueFrom filter: %s key returned None' % self.data['expr'])
+                    log.warning(f"ValueFrom filter: {self.data['expr']} key returned None")
                 return res
             return data
         elif format == 'txt':

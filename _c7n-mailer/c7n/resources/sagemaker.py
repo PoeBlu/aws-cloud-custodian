@@ -156,12 +156,10 @@ class QueryFilter(object):
         names = set()
         for d in data:
             if not isinstance(d, dict):
-                raise PolicyValidationError(
-                    "Job Query Filter Invalid structure %s" % d)
+                raise PolicyValidationError(f"Job Query Filter Invalid structure {d}")
             for k, v in d.items():
                 if isinstance(v, list):
-                    raise ValueError(
-                        'Job query filter invalid structure %s' % v)
+                    raise ValueError(f'Job query filter invalid structure {v}')
             query = cls(d).validate().query()
             if query['Name'] in names:
                 # Cannot filter multiple times on the same key
@@ -182,16 +180,15 @@ class QueryFilter(object):
         self.value = None
 
     def validate(self):
-        if not len(list(self.data.keys())) == 1:
-            raise PolicyValidationError(
-                "Job Query Filter Invalid %s" % self.data)
+        if len(list(self.data.keys())) != 1:
+            raise PolicyValidationError(f"Job Query Filter Invalid {self.data}")
         self.key = list(self.data.keys())[0]
         self.value = list(self.data.values())[0]
 
         if self.key not in self.JOB_FILTERS and not self.key.startswith('tag:'):
             raise PolicyValidationError(
-                "Job Query Filter invalid filter name %s" % (
-                    self.data))
+                f"Job Query Filter invalid filter name {self.data}"
+            )
 
         if self.value is None:
             raise PolicyValidationError(

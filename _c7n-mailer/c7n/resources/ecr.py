@@ -156,15 +156,13 @@ def lifecycle_rule_validate(policy, rule):
     if (rule['selection']['tagStatus'] == 'tagged' and
             'tagPrefixList' not in rule['selection']):
         raise PolicyValidationError(
-            ("{} has invalid lifecycle rule {} tagprefixlist "
-             "required for tagStatus: tagged").format(
-                 policy.name, rule))
+            f"{policy.name} has invalid lifecycle rule {rule} tagprefixlist required for tagStatus: tagged"
+        )
     if (rule['selection']['countType'] == 'sinceImagePushed' and
             'countUnit' not in rule['selection']):
         raise PolicyValidationError(
-            ("{} has invalid lifecycle rule {} countUnit "
-             "required for countType: sinceImagePushed").format(
-                 policy.name, rule))
+            f"{policy.name} has invalid lifecycle rule {rule} countUnit required for countType: sinceImagePushed"
+        )
 
 
 @ECR.filter_registry.register('lifecycle-rule')

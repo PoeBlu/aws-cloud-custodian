@@ -168,7 +168,7 @@ class MetricFilter(Filter):
         # Get timespan
         end_time = utcnow()
         start_time = end_time - timedelta(hours=self.timeframe)
-        self.timespan = "{}/{}".format(start_time, end_time)
+        self.timespan = f"{start_time}/{end_time}"
 
         # Create Azure Monitor client
         self.client = self.manager.get_client('azure.mgmt.monitor.MonitorManagementClient')
@@ -187,12 +187,15 @@ class MetricFilter(Filter):
             aggregation=self.aggregation,
             filter=self.filter
         )
-        if len(metrics_data.value) > 0 and len(metrics_data.value[0].timeseries) > 0:
-            m = [getattr(item, self.aggregation)
-                 for item in metrics_data.value[0].timeseries[0].data]
-        else:
-            m = None
-        return m
+        return (
+            [
+                getattr(item, self.aggregation)
+                for item in metrics_data.value[0].timeseries[0].data
+            ]
+            if len(metrics_data.value) > 0
+            and len(metrics_data.value[0].timeseries) > 0
+            else None
+        )
 
     def passes_op_filter(self, resource):
         m_data = self.get_metric_data(resource)
@@ -261,14 +264,15 @@ class TagActionFilter(Filter):
         op = self.data.get('op')
         if self.manager and op not in self.manager.action_registry.keys():
             raise PolicyValidationError(
-                "Invalid marked-for-op op:%s in %s" % (op, self.manager.data))
+                f"Invalid marked-for-op op:{op} in {self.manager.data}"
+            )
 
-        tz = tzutils.gettz(Time.TZ_ALIASES.get(self.data.get('tz', 'utc')))
-        if not tz:
+        if tz := tzutils.gettz(Time.TZ_ALIASES.get(self.data.get('tz', 'utc'))):
+            return self
+        else:
             raise PolicyValidationError(
-                "Invalid timezone specified '%s' in %s" % (
-                    self.data.get('tz'), self.manager.data))
-        return self
+                f"Invalid timezone specified '{self.data.get('tz')}' in {self.manager.data}"
+            )
 
     def process(self, resources, event=None):
         from c7n_azure.utils import now
@@ -299,8 +303,9 @@ class TagActionFilter(Filter):
         try:
             action_date = parse(action_date_str)
         except Exception:
-            self.log.warning("could not parse tag:%s value:%s on %s" % (
-                self.tag, v, i['InstanceId']))
+            self.log.warning(
+                f"could not parse tag:{self.tag} value:{v} on {i['InstanceId']}"
+            )
 
         if action_date.tzinfo:
             # if action_date is timezone aware, set to timezone provided
@@ -364,13 +369,13 @@ class DiagnosticSettingsFilter(ValueFilter):
         results = []
         # Process each resource in a separate thread, returning all that pass filter
         with self.executor_factory(max_workers=3) as w:
-            for resource_set in chunks(resources, 20):
-                futures.append(w.submit(self.process_resource_set, resource_set))
-
+            futures.extend(
+                w.submit(self.process_resource_set, resource_set)
+                for resource_set in chunks(resources, 20)
+            )
             for f in as_completed(futures):
                 if f.exception():
-                    self.log.warning(
-                        "Diagnostic settings filter error: %s" % f.exception())
+                    self.log.warning(f"Diagnostic settings filter error: {f.exception()}")
                     continue
                 else:
                     results.extend(f.result())
@@ -434,7 +439,7 @@ class PolicyCompliantFilter(Filter):
         # Translate definitions display names into ids
         if self.definitions:
             policyClient = s.client("azure.mgmt.resource.policy.PolicyClient")
-            definitions = [d for d in policyClient.policy_definitions.list()]
+            definitions = list(policyClient.policy_definitions.list())
             definition_ids = [d.id.lower() for d in definitions
                               if d.display_name in self.definitions or
                               d.name in self.definitions]
@@ -554,8 +559,7 @@ class FirewallRulesFilter(Filter):
 
     def _check_resource(self, resource):
         resource_rules = self._query_rules(resource)
-        ok = self._check_rules(resource_rules)
-        return ok
+        return self._check_rules(resource_rules)
 
     def _check_rules(self, resource_rules):
         if self.policy_equal is not None:
@@ -738,8 +742,7 @@ class CostFilter(ValueFilter):
 
         cost = self.cached_costs[id]
         i['c7n:cost'] = cost
-        result = super(CostFilter, self).__call__(cost)
-        return result
+        return super(CostFilter, self).__call__(cost)
 
     def fix_wrap_rest_response(self, data):
         '''
@@ -778,16 +781,15 @@ class CostFilter(ValueFilter):
 
         subscription_id = self.manager.get_session().subscription_id
 
-        scope = '/subscriptions/' + subscription_id
+        scope = f'/subscriptions/{subscription_id}'
 
         query = client.query.usage_by_scope(scope, definition)
 
         if hasattr(query, '_derserializer'):
             original = query._derserializer._deserialize
             query._derserializer._deserialize = lambda target, data: \
-                original(target, self.fix_wrap_rest_response(data))
+                    original(target, self.fix_wrap_rest_response(data))
 
         result = list(query)[0]
         result = [{result.columns[i].name: v for i, v in enumerate(row)} for row in result.rows]
-        result = {r['ResourceId'].lower(): r for r in result}
-        return result
+        return {r['ResourceId'].lower(): r for r in result}

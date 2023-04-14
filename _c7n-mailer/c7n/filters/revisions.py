@@ -66,13 +66,14 @@ class Diff(Filter):
         if 'selector' in self.data and self.data['selector'] == 'date':
             if 'selector_value' not in self.data:
                 raise PolicyValidationError(
-                    "Date version selector requires specification of date on %s" % (
-                        self.manager.data))
+                    f"Date version selector requires specification of date on {self.manager.data}"
+                )
             try:
                 parse_date(self.data['selector_value'])
             except ValueError:
                 raise PolicyValidationError(
-                    "Invalid date for selector_value on %s" % (self.manager.data))
+                    f"Invalid date for selector_value on {self.manager.data}"
+                )
 
         elif 'selector' in self.data and self.data['selector'] == 'locked':
             idx = self.manager.data['filters'].index(self.data)
@@ -84,8 +85,8 @@ class Diff(Filter):
                     found = True
             if not found:
                 raise PolicyValidationError(
-                    "locked selector needs previous use of is-locked filter on %s" % (
-                        self.manager.data))
+                    f"locked selector needs previous use of is-locked filter on {self.manager.data}"
+                )
         return self
 
     def process(self, resources, event=None):
@@ -99,8 +100,7 @@ class Diff(Filter):
             r['c7n:previous-revision'] = rev = self.select_revision(revisions)
             if not rev:
                 continue
-            delta = self.diff(rev['resource'], r)
-            if delta:
+            if delta := self.diff(rev['resource'], r):
                 r['c7n:diff'] = delta
                 results.append(r)
         return results
@@ -109,7 +109,7 @@ class Diff(Filter):
         params = dict(
             resourceType=self.model.config_type,
             resourceId=resource[self.model.id])
-        params.update(self.get_selector_params(resource))
+        params |= self.get_selector_params(resource)
         try:
             revisions = config.get_resource_config_history(
                 **params)['configurationItems']
@@ -118,8 +118,8 @@ class Diff(Filter):
                 return []
             if e.response['Error']['Code'] != ErrNotFound:
                 self.log.debug(
-                    "config - resource %s:%s not found" % (
-                        self.model.config_type, resource[self.model.id]))
+                    f"config - resource {self.model.config_type}:{resource[self.model.id]} not found"
+                )
                 revisions = []
             raise
         return revisions
@@ -183,7 +183,7 @@ class JsonDiff(Diff):
         return sanitized
 
     @classmethod
-    def register_resources(klass, registry, resource_class):
+    def register_resources(cls, registry, resource_class):
         """ meta model subscriber on resource registration.
 
         We watch for new resource types being registered and if they
@@ -192,7 +192,7 @@ class JsonDiff(Diff):
         config_type = getattr(resource_class.resource_type, 'config_type', None)
         if config_type is None:
             return
-        resource_class.filter_registry.register('json-diff', klass)
+        resource_class.filter_registry.register('json-diff', cls)
 
 
 if HAVE_JSONPATH:

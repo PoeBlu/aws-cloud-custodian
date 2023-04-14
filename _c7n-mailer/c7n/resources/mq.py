@@ -67,8 +67,7 @@ class MQMetrics(MetricsFilter):
 
     def get_dimensions(self, resource):
         # Fetching for Active broker instance only, https://amzn.to/2tLBhEB
-        return [{'Name': self.model.dimension,
-                 'Value': "{}-1".format(resource['BrokerName'])}]
+        return [{'Name': self.model.dimension, 'Value': f"{resource['BrokerName']}-1"}]
 
 
 @MessageBroker.action_registry.register('delete')

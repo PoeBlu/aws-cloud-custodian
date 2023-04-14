@@ -121,9 +121,7 @@ class ModifyVpcSecurityGroupsAction(Action):
 
     def _get_array(self, k):
         v = self.data.get(k, [])
-        if isinstance(v, six.string_types):
-            return [v]
-        return v
+        return [v] if isinstance(v, six.string_types) else v
 
     def get_groups_by_names(self, names):
         """Resolve security names to security groups resources."""

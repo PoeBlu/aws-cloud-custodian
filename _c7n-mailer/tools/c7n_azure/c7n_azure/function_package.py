@@ -55,24 +55,25 @@ class FunctionPackage(object):
         s = local_session(Session)
 
         for target_subscription_id in self.target_subscription_ids:
-            name = self.name + ("_" + target_subscription_id if target_subscription_id else "")
+            name = self.name + (
+                f"_{target_subscription_id}" if target_subscription_id else ""
+            )
             # generate and add auth
-            self.pkg.add_contents(dest=name + '/auth.json',
-                                  contents=s.get_functions_auth_string(target_subscription_id))
+            self.pkg.add_contents(
+                dest=f'{name}/auth.json',
+                contents=s.get_functions_auth_string(target_subscription_id),
+            )
 
-            self.pkg.add_file(self.function_path,
-                              dest=name + '/function.py')
+            self.pkg.add_file(self.function_path, dest=f'{name}/function.py')
 
-            self.pkg.add_contents(dest=name + '/__init__.py', contents='')
+            self.pkg.add_contents(dest=f'{name}/__init__.py', contents='')
 
             if policy:
                 config_contents = self.get_function_config(policy, queue_name)
                 policy_contents = self._get_policy(policy)
-                self.pkg.add_contents(dest=name + '/function.json',
-                                      contents=config_contents)
+                self.pkg.add_contents(dest=f'{name}/function.json', contents=config_contents)
 
-                self.pkg.add_contents(dest=name + '/config.json',
-                                      contents=policy_contents)
+                self.pkg.add_contents(dest=f'{name}/config.json', contents=policy_contents)
                 self._add_host_config(policy['mode']['type'])
             else:
                 self._add_host_config(None)
@@ -85,7 +86,7 @@ class FunctionPackage(object):
 
     def get_function_config(self, policy, queue_name=None):
         config = \
-            {
+                {
                 "scriptFile": "function.py",
                 "bindings": [{
                     "direction": "in"
@@ -107,8 +108,7 @@ class FunctionPackage(object):
             binding['queueName'] = queue_name
 
         else:
-            self.log.error("Mode not yet supported for Azure functions (%s)"
-                           % mode_type)
+            self.log.error(f"Mode not yet supported for Azure functions ({mode_type})")
 
         return json.dumps(config, indent=2)
 
@@ -189,14 +189,14 @@ class FunctionPackage(object):
         for r in range(retries):
             if self.status(deployment_creds):
                 return True
-            else:
-                self.log.info('(%s/%s) Will retry Function App status check in %s seconds...'
-                              % (r + 1, retries, delay))
-                time.sleep(delay)
+            self.log.info(
+                f'({r + 1}/{retries}) Will retry Function App status check in {delay} seconds...'
+            )
+            time.sleep(delay)
         return False
 
     def status(self, deployment_creds):
-        status_url = '%s/api/deployments' % deployment_creds.scm_uri
+        status_url = f'{deployment_creds.scm_uri}/api/deployments'
 
         try:
             r = requests.get(status_url, timeout=30, verify=self.enable_ssl_cert)
@@ -216,9 +216,9 @@ class FunctionPackage(object):
 
         # update perms of the package
         self._update_perms_package()
-        zip_api_url = '%s/api/zipdeploy?isAsync=true' % deployment_creds.scm_uri
+        zip_api_url = f'{deployment_creds.scm_uri}/api/zipdeploy?isAsync=true'
         headers = {'content-type': 'application/octet-stream'}
-        self.log.info("Publishing Function package from %s" % self.pkg.path)
+        self.log.info(f"Publishing Function package from {self.pkg.path}")
 
         zip_file = self.pkg.get_bytes()
 
@@ -233,7 +233,7 @@ class FunctionPackage(object):
 
         r.raise_for_status()
 
-        self.log.info("Function publish result: %s" % r.status_code)
+        self.log.info(f"Function publish result: {r.status_code}")
 
     def close(self):
         self.pkg.close()

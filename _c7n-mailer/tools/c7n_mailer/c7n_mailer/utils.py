@@ -54,7 +54,7 @@ def get_rendered_jinja(
     env = get_jinja_env(template_folders)
     mail_template = sqs_message['action'].get(specified_template, default_template)
     if not os.path.isabs(mail_template):
-        mail_template = '%s.j2' % mail_template
+        mail_template = f'{mail_template}.j2'
     try:
         template = env.get_template(mail_template)
     except Exception as error_msg:
@@ -71,7 +71,7 @@ def get_rendered_jinja(
                 datetime.utcnow().timetuple())
         )).isoformat()
 
-    rendered_jinja = template.render(
+    return template.render(
         recipient=target,
         resources=resources,
         account=sqs_message.get('account', ''),
@@ -80,8 +80,8 @@ def get_rendered_jinja(
         action=sqs_message['action'],
         policy=sqs_message['policy'],
         execution_start=execution_start,
-        region=sqs_message.get('region', ''))
-    return rendered_jinja
+        region=sqs_message.get('region', ''),
+    )
 
 
 # eg, target_tag_keys could be resource-owners ['Owners', 'SupportTeam']
@@ -91,15 +91,15 @@ def get_resource_tag_targets(resource, target_tag_keys):
     if 'Tags' not in resource:
         return []
     tags = {tag['Key']: tag['Value'] for tag in resource['Tags']}
-    targets = []
-    for target_tag_key in target_tag_keys:
-        if target_tag_key in tags:
-            targets.append(tags[target_tag_key])
-    return targets
+    return [
+        tags[target_tag_key]
+        for target_tag_key in target_tag_keys
+        if target_tag_key in tags
+    ]
 
 
 def get_message_subject(sqs_message):
-    default_subject = 'Custodian notification - %s' % (sqs_message['policy']['name'])
+    default_subject = f"Custodian notification - {sqs_message['policy']['name']}"
     subject = sqs_message['action'].get('subject', default_subject)
     jinja_template = jinja2.Template(subject)
     subject = jinja_template.render(
@@ -148,76 +148,43 @@ def format_struct(evt):
 
 
 def get_resource_tag_value(resource, k):
-    for t in resource.get('Tags', []):
-        if t['Key'] == k:
-            return t['Value']
-    return ''
+    return next(
+        (t['Value'] for t in resource.get('Tags', []) if t['Key'] == k), ''
+    )
 
 
 def resource_format(resource, resource_type):
     if resource_type == 'ec2':
         tag_map = {t['Key']: t['Value'] for t in resource.get('Tags', ())}
-        return "%s %s %s %s %s %s" % (
-            resource['InstanceId'],
-            resource.get('VpcId', 'NO VPC!'),
-            resource['InstanceType'],
-            resource.get('LaunchTime'),
-            tag_map.get('Name', ''),
-            resource.get('PrivateIpAddress'))
+        return f"{resource['InstanceId']} {resource.get('VpcId', 'NO VPC!')} {resource['InstanceType']} {resource.get('LaunchTime')} {tag_map.get('Name', '')} {resource.get('PrivateIpAddress')}"
     elif resource_type == 'ami':
-        return "%s %s %s" % (
-            resource.get('Name'), resource['ImageId'], resource['CreationDate'])
+        return f"{resource.get('Name')} {resource['ImageId']} {resource['CreationDate']}"
     elif resource_type == 'sagemaker-notebook':
-        return "%s" % (resource['NotebookInstanceName'])
+        return f"{resource['NotebookInstanceName']}"
     elif resource_type == 's3':
-        return "%s" % (resource['Name'])
+        return f"{resource['Name']}"
     elif resource_type == 'ebs':
-        return "%s %s %s %s" % (
-            resource['VolumeId'],
-            resource['Size'],
-            resource['State'],
-            resource['CreateTime'])
+        return f"{resource['VolumeId']} {resource['Size']} {resource['State']} {resource['CreateTime']}"
     elif resource_type == 'rds':
-        return "%s %s %s %s" % (
-            resource['DBInstanceIdentifier'],
-            "%s-%s" % (
-                resource['Engine'], resource['EngineVersion']),
-            resource['DBInstanceClass'],
-            resource['AllocatedStorage'])
+        return f"{resource['DBInstanceIdentifier']} {resource['Engine']}-{resource['EngineVersion']} {resource['DBInstanceClass']} {resource['AllocatedStorage']}"
     elif resource_type == 'asg':
         tag_map = {t['Key']: t['Value'] for t in resource.get('Tags', ())}
-        return "%s %s %s" % (
-            resource['AutoScalingGroupName'],
-            tag_map.get('Name', ''),
-            "instances: %d" % (len(resource.get('Instances', []))))
+        return f"""{resource['AutoScalingGroupName']} {tag_map.get('Name', '')} {"instances: %d" % len(resource.get('Instances', []))}"""
     elif resource_type == 'elb':
         tag_map = {t['Key']: t['Value'] for t in resource.get('Tags', ())}
-        if 'ProhibitedPolicies' in resource:
-            return "%s %s %s %s" % (
-                resource['LoadBalancerName'],
-                "instances: %d" % len(resource['Instances']),
-                "zones: %d" % len(resource['AvailabilityZones']),
-                "prohibited_policies: %s" % ','.join(
-                    resource['ProhibitedPolicies']))
-        return "%s %s %s" % (
-            resource['LoadBalancerName'],
-            "instances: %d" % len(resource['Instances']),
-            "zones: %d" % len(resource['AvailabilityZones']))
+        return (
+            f"""{resource['LoadBalancerName']} {"instances: %d" % len(resource['Instances'])} {"zones: %d" % len(resource['AvailabilityZones'])} prohibited_policies: {','.join(resource['ProhibitedPolicies'])}"""
+            if 'ProhibitedPolicies' in resource
+            else f"""{resource['LoadBalancerName']} {"instances: %d" % len(resource['Instances'])} {"zones: %d" % len(resource['AvailabilityZones'])}"""
+        )
     elif resource_type == 'redshift':
-        return "%s %s %s" % (
-            resource['ClusterIdentifier'],
-            'nodes:%d' % len(resource['ClusterNodes']),
-            'encrypted:%s' % resource['Encrypted'])
+        return f"{resource['ClusterIdentifier']} {'nodes:%d' % len(resource['ClusterNodes'])} encrypted:{resource['Encrypted']}"
     elif resource_type == 'emr':
-        return "%s status:%s" % (
-            resource['Id'],
-            resource['Status']['State'])
+        return f"{resource['Id']} status:{resource['Status']['State']}"
     elif resource_type == 'cfn':
-        return "%s" % (
-            resource['StackName'])
+        return f"{resource['StackName']}"
     elif resource_type == 'launch-config':
-        return "%s" % (
-            resource['LaunchConfigurationName'])
+        return f"{resource['LaunchConfigurationName']}"
     elif resource_type == 'security-group':
         name = resource.get('GroupName', '')
         for t in resource.get('Tags', ()):
@@ -231,120 +198,62 @@ def resource_format(resource, resource_type):
             len(resource.get('IpPermissionsEgress', ())))
     elif resource_type == 'log-group':
         if 'lastWrite' in resource:
-            return "name: %s last_write: %s" % (
-                resource['logGroupName'],
-                resource['lastWrite'])
-        return "name: %s" % (resource['logGroupName'])
+            return f"name: {resource['logGroupName']} last_write: {resource['lastWrite']}"
+        return f"name: {resource['logGroupName']}"
     elif resource_type == 'cache-cluster':
-        return "name: %s created: %s status: %s" % (
-            resource['CacheClusterId'],
-            resource['CacheClusterCreateTime'],
-            resource['CacheClusterStatus'])
+        return f"name: {resource['CacheClusterId']} created: {resource['CacheClusterCreateTime']} status: {resource['CacheClusterStatus']}"
     elif resource_type == 'cache-snapshot':
         cid = resource.get('CacheClusterId')
         if cid is None:
             cid = ', '.join([
                 ns['CacheClusterId'] for ns in resource['NodeSnapshots']])
-        return "name: %s cluster: %s source: %s" % (
-            resource['SnapshotName'],
-            cid,
-            resource['SnapshotSource'])
+        return f"name: {resource['SnapshotName']} cluster: {cid} source: {resource['SnapshotSource']}"
     elif resource_type == 'redshift-snapshot':
-        return "name: %s db: %s" % (
-            resource['SnapshotIdentifier'],
-            resource['DBName'])
+        return f"name: {resource['SnapshotIdentifier']} db: {resource['DBName']}"
     elif resource_type == 'ebs-snapshot':
-        return "name: %s date: %s" % (
-            resource['SnapshotId'],
-            resource['StartTime'])
+        return f"name: {resource['SnapshotId']} date: {resource['StartTime']}"
     elif resource_type == 'subnet':
-        return "%s %s %s %s %s %s" % (
-            resource['SubnetId'],
-            resource['VpcId'],
-            resource['AvailabilityZone'],
-            resource['State'],
-            resource['CidrBlock'],
-            resource['AvailableIpAddressCount'])
+        return f"{resource['SubnetId']} {resource['VpcId']} {resource['AvailabilityZone']} {resource['State']} {resource['CidrBlock']} {resource['AvailableIpAddressCount']}"
     elif resource_type == 'account':
-        return " %s %s" % (
-            resource['account_id'],
-            resource['account_name'])
+        return f" {resource['account_id']} {resource['account_name']}"
     elif resource_type == 'cloudtrail':
-        return " %s %s" % (
-            resource['account_id'],
-            resource['account_name'])
+        return f" {resource['account_id']} {resource['account_name']}"
     elif resource_type == 'vpc':
-        return "%s " % (
-            resource['VpcId'])
+        return f"{resource['VpcId']} "
     elif resource_type == 'iam-group':
-        return " %s %s %s" % (
-            resource['GroupName'],
-            resource['Arn'],
-            resource['CreateDate'])
+        return f" {resource['GroupName']} {resource['Arn']} {resource['CreateDate']}"
     elif resource_type == 'rds-snapshot':
-        return " %s %s %s" % (
-            resource['DBSnapshotIdentifier'],
-            resource['DBInstanceIdentifier'],
-            resource['SnapshotCreateTime'])
+        return f" {resource['DBSnapshotIdentifier']} {resource['DBInstanceIdentifier']} {resource['SnapshotCreateTime']}"
     elif resource_type == 'iam-user':
-        return " %s " % (
-            resource['UserName'])
+        return f" {resource['UserName']} "
     elif resource_type == 'iam-role':
-        return " %s %s " % (
-            resource['RoleName'],
-            resource['CreateDate'])
+        return f" {resource['RoleName']} {resource['CreateDate']} "
     elif resource_type == 'iam-policy':
-        return " %s " % (
-            resource['PolicyName'])
+        return f" {resource['PolicyName']} "
     elif resource_type == 'iam-profile':
-        return " %s " % (
-            resource['InstanceProfileId'])
+        return f" {resource['InstanceProfileId']} "
     elif resource_type == 'dynamodb-table':
-        return "name: %s created: %s status: %s" % (
-            resource['TableName'],
-            resource['CreationDateTime'],
-            resource['TableStatus'])
+        return f"name: {resource['TableName']} created: {resource['CreationDateTime']} status: {resource['TableStatus']}"
     elif resource_type == "sqs":
-        return "QueueURL: %s QueueArn: %s " % (
-            resource['QueueUrl'],
-            resource['QueueArn'])
+        return f"QueueURL: {resource['QueueUrl']} QueueArn: {resource['QueueArn']} "
     elif resource_type == "efs":
-        return "name: %s  id: %s  state: %s" % (
-            resource['Name'],
-            resource['FileSystemId'],
-            resource['LifeCycleState']
-        )
+        return f"name: {resource['Name']}  id: {resource['FileSystemId']}  state: {resource['LifeCycleState']}"
     elif resource_type == "network-addr":
-        return "ip: %s  id: %s  scope: %s" % (
-            resource['PublicIp'],
-            resource['AllocationId'],
-            resource['Domain']
-        )
+        return f"ip: {resource['PublicIp']}  id: {resource['AllocationId']}  scope: {resource['Domain']}"
     elif resource_type == "route-table":
-        return "id: %s  vpc: %s" % (
-            resource['RouteTableId'],
-            resource['VpcId']
-        )
+        return f"id: {resource['RouteTableId']}  vpc: {resource['VpcId']}"
     elif resource_type == "app-elb":
-        return "arn: %s  zones: %s  scheme: %s" % (
-            resource['LoadBalancerArn'],
-            len(resource['AvailabilityZones']),
-            resource['Scheme'])
+        return f"arn: {resource['LoadBalancerArn']}  zones: {len(resource['AvailabilityZones'])}  scheme: {resource['Scheme']}"
     elif resource_type == "nat-gateway":
-        return "id: %s  state: %s  vpc: %s" % (
-            resource['NatGatewayId'],
-            resource['State'],
-            resource['VpcId'])
+        return f"id: {resource['NatGatewayId']}  state: {resource['State']}  vpc: {resource['VpcId']}"
     elif resource_type == "internet-gateway":
-        return "id: %s  attachments: %s" % (
-            resource['InternetGatewayId'],
-            len(resource['Attachments']))
+        return f"id: {resource['InternetGatewayId']}  attachments: {len(resource['Attachments'])}"
     elif resource_type == 'lambda':
         return "Name: %s  RunTime: %s  \n" % (
             resource['FunctionName'],
             resource['Runtime'])
     else:
-        return "%s" % format_struct(resource)
+        return f"{format_struct(resource)}"
 
 
 def get_provider(mailer_config):
@@ -363,14 +272,14 @@ def kms_decrypt(config, logger, session, encrypted_field):
                     'Plaintext'].decode('utf8')
         except (TypeError, base64.binascii.Error) as e:
             logger.warning(
-                "Error: %s Unable to base64 decode %s, will assume plaintext." %
-                (e, encrypted_field))
+                f"Error: {e} Unable to base64 decode {encrypted_field}, will assume plaintext."
+            )
         except ClientError as e:
             if e.response['Error']['Code'] != 'InvalidCiphertextException':
                 raise
             logger.warning(
-                "Error: %s Unable to decrypt %s with kms, will assume plaintext." %
-                (e, encrypted_field))
+                f"Error: {e} Unable to decrypt {encrypted_field} with kms, will assume plaintext."
+            )
         return config[encrypted_field]
     else:
         logger.debug("No encrypted value to decrypt.")
@@ -412,14 +321,12 @@ def get_aws_username_from_event(logger, event):
         if ':' in user:
             user = user.split(':', 1)[-1]
         return user
-    if identity['type'] == 'IAMUser' or identity['type'] == 'WebIdentityUser':
+    if identity['type'] in ['IAMUser', 'WebIdentityUser']:
         return identity['userName']
     if identity['type'] == 'Root':
         return None
-    # this conditional is left here as a last resort, it should
-    # be better documented with an example UserIdentity json
-    if ':' in identity['principalId']:
-        user_id = identity['principalId'].split(':', 1)[-1]
-    else:
-        user_id = identity['principalId']
-    return user_id
+    return (
+        identity['principalId'].split(':', 1)[-1]
+        if ':' in identity['principalId']
+        else identity['principalId']
+    )

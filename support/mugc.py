@@ -76,14 +76,12 @@ def region_gc(options, region, policy_config, policies):
             # Continue on with next function instead of raising an exception
             continue
 
-        if 'Policy' not in result:
-            pass
-        else:
+        if 'Policy' in result:
             p = json.loads(result['Policy'])
             for s in p['Statement']:
                 principal = s.get('Principal')
                 if not isinstance(principal, dict):
-                    log.info("Skipping function %s" % n['FunctionName'])
+                    log.info(f"Skipping function {n['FunctionName']}")
                     continue
                 if principal == {'Service': 'events.amazonaws.com'}:
                     events.append(
@@ -170,9 +168,7 @@ def main():
     parser = setup_parser()
     options = parser.parse_args()
 
-    log_level = logging.INFO
-    if options.verbose:
-        log_level = logging.DEBUG
+    log_level = logging.DEBUG if options.verbose else logging.INFO
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s: %(name)s:%(levelname)s %(message)s")

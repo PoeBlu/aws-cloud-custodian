@@ -43,14 +43,18 @@ class MetricsOutputTest(BaseTest):
         session = factory()
         client = session.client('monitoring', 'v3', 'projects.timeSeries')
         results = client.execute_command(
-            'list', {
-                'name': 'projects/{}'.format(project_id),
+            'list',
+            {
+                'name': f'projects/{project_id}',
                 'filter': 'metric.type="custom.googleapis.com/custodian/policy/resourcecount"',
                 'pageSize': 3,
                 'interval_startTime': (
-                    datetime.utcnow() - timedelta(minutes=5)).isoformat('T') + 'Z',
-                'interval_endTime': datetime.utcnow().isoformat('T') + 'Z'
-            })
+                    datetime.utcnow() - timedelta(minutes=5)
+                ).isoformat('T')
+                + 'Z',
+                'interval_endTime': datetime.utcnow().isoformat('T') + 'Z',
+            },
+        )
         self.assertEqual(
             results['timeSeries'],
             [{u'metric': {

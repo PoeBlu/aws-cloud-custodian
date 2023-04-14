@@ -61,7 +61,7 @@ class Disable(MethodAction):
 
     def get_resource_params(self, model, resource):
         session = local_session(self.manager.session_factory)
-        return {'serviceName': resource['serviceName'],
-                'body': {
-                    'consumerId': 'project:{}'.format(
-                        session.get_default_project())}}
+        return {
+            'serviceName': resource['serviceName'],
+            'body': {'consumerId': f'project:{session.get_default_project()}'},
+        }

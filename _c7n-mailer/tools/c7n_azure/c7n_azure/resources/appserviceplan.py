@@ -106,8 +106,9 @@ class ResizePlan(AzureBaseAction):
         try:
             self.client.app_service_plans.update(resource['resourceGroup'], resource['name'], model)
         except models.DefaultErrorResponseException as e:
-            self.log.error("Failed to resize %s.  Inner exception: %s" %
-                           (resource['name'], e.inner_exception))
+            self.log.error(
+                f"Failed to resize {resource['name']}.  Inner exception: {e.inner_exception}"
+            )
 
     @staticmethod
     def get_sku_name(tier):

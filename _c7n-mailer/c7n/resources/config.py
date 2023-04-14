@@ -40,13 +40,14 @@ class ConfigRecorder(QueryResourceManager):
         client = local_session(self.session_factory).client('config')
 
         for r in resources:
-            status = client.describe_configuration_recorder_status(
-                ConfigurationRecorderNames=[r['name']])['ConfigurationRecordersStatus']
-            if status:
+            if status := client.describe_configuration_recorder_status(
+                ConfigurationRecorderNames=[r['name']]
+            )['ConfigurationRecordersStatus']:
                 r.update({'status': status.pop()})
 
-            channels = client.describe_delivery_channels().get('DeliveryChannels')
-            if channels:
+            if channels := client.describe_delivery_channels().get(
+                'DeliveryChannels'
+            ):
                 r.update({'deliveryChannel': channels.pop()})
         return resources
 

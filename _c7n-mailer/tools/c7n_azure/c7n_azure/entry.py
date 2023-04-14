@@ -64,4 +64,3 @@ import c7n_azure.resources.record_set  # noqa: F401
 def initialize_azure():
     # after all resources are loaded, do out of band registrations of filters/actions
     resources.notify(resources.EVENT_FINAL)
-    pass

@@ -31,7 +31,7 @@ class MailerTester(object):
 
     def __init__(self, msg_file, config, msg_plain=False, json_dump_file=None):
         if not os.path.exists(msg_file):
-            raise RuntimeError("File does not exist: %s" % msg_file)
+            raise RuntimeError(f"File does not exist: {msg_file}")
         logger.debug('Reading message from: %s', msg_file)
         with open(msg_file, 'r') as fh:
             raw = fh.read()
@@ -66,7 +66,7 @@ class MailerTester(object):
             return
         if dry_run:
             for to_addrs, mimetext_msg in addrs_to_msgs.items():
-                print('-> SEND MESSAGE TO: %s' % '; '.join(to_addrs))
+                print(f"-> SEND MESSAGE TO: {'; '.join(to_addrs)}")
                 print(mimetext_msg.get_payload(None, True))
             return
         # else actually send the message...
@@ -116,8 +116,7 @@ def main():
         os.path.abspath(os.path.join(module_dir, '..', 'msg-templates')),
         os.path.abspath('.')
     ]
-    templates = options.templates
-    if templates:
+    if templates := options.templates:
         default_templates.append(
             os.path.abspath(os.path.expanduser(os.path.expandvars(templates)))
         )

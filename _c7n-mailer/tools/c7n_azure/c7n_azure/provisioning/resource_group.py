@@ -11,7 +11,7 @@ class ResourceGroupUnit(DeploymentUnit):
         self.type = "Resource Group"
 
     def verify_params(self, params):
-        return set(params.keys()) == set({'name', 'location'})
+        return set(params.keys()) == {'name', 'location'}
 
     def _get(self, params):
         try:

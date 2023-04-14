@@ -82,9 +82,13 @@ class RoleAssignment(QueryResourceManager):
         s = Session(resource='https://graph.windows.net')
         graph_client = GraphRbacManagementClient(s.get_credentials(), s.get_tenant_id())
 
-        object_ids = list(set(
-            resource['properties']['principalId'] for resource in resources
-            if resource['properties']['principalId']))
+        object_ids = list(
+            {
+                resource['properties']['principalId']
+                for resource in resources
+                if resource['properties']['principalId']
+            }
+        )
 
         principal_dics = GraphHelper.get_principal_dictionary(graph_client, object_ids)
 
@@ -145,7 +149,7 @@ class DescribeSource(DescribeSource):
     def get_resources(self, query):
         s = local_session(self.manager.session_factory)
         client = s.client('azure.mgmt.authorization.AuthorizationManagementClient')
-        scope = '/subscriptions/%s' % (s.subscription_id)
+        scope = f'/subscriptions/{s.subscription_id}'
         resources = client.role_definitions.list(scope)
         return [r.serialize(True) for r in resources]
 
@@ -227,19 +231,17 @@ class ResourceAccessFilter(RelatedResourceFilter):
             return [r['id'] for r in related]
 
     def process_resource(self, resource, related):
-        for r in related:
-            if resource['properties']['scope'] in r:
-                return True
-
-        return False
+        return any(resource['properties']['scope'] in r for r in related)
 
     def validate(self):
         if self.factory is None:
             raise FilterValidationError(
                 "The related resource is not a custodian supported azure resource"
             )
-        if (self.data['relatedResource'] == 'azure.roleassignment' or
-                self.data['relatedResource'] == 'azure.roledefinition'):
+        if self.data['relatedResource'] in [
+            'azure.roleassignment',
+            'azure.roledefinition',
+        ]:
             raise FilterValidationError(
                 "The related resource can not be role assignments or role definitions"
             )

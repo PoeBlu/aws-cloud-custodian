@@ -192,8 +192,8 @@ class DefinitionDeregister(BaseAction, StateTransitionFilter):
 
     def deregister_definition(self, r):
         self.client.deregister_job_definition(
-            jobDefinition='%s:%s' % (r['jobDefinitionName'],
-                                     r['revision']))
+            jobDefinition=f"{r['jobDefinitionName']}:{r['revision']}"
+        )
 
     def process(self, resources):
         resources = self.filter_resource_state(

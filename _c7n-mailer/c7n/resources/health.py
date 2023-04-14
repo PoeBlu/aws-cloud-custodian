@@ -114,8 +114,7 @@ class QueryFilter(object):
         results = []
         for d in data:
             if not isinstance(d, dict):
-                raise PolicyValidationError(
-                    "Health Query Filter Invalid structure %s" % d)
+                raise PolicyValidationError(f"Health Query Filter Invalid structure {d}")
             results.append(cls(d).validate())
         return results
 
@@ -125,15 +124,15 @@ class QueryFilter(object):
         self.value = None
 
     def validate(self):
-        if not len(list(self.data.keys())) == 1:
-            raise ValueError(
-                "Health Query Filter Invalid %s" % self.data)
+        if len(list(self.data.keys())) != 1:
+            raise ValueError(f"Health Query Filter Invalid {self.data}")
         self.key = list(self.data.keys())[0]
         self.value = list(self.data.values())[0]
 
         if self.key not in HEALTH_VALID_FILTERS:
             raise PolicyValidationError(
-                "Health Query Filter invalid filter name %s" % (self.data))
+                f"Health Query Filter invalid filter name {self.data}"
+            )
 
         if self.value is None:
             raise PolicyValidationError(

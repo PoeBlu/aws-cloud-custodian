@@ -35,20 +35,17 @@ class RelatedResourceFilter(ValueFilter):
     def validate(self):
         name = self.__class__.__name__
         if self.RelatedIdsExpression is None:
-            raise ValueError(
-                "%s Filter requires resource expression" % name)
+            raise ValueError(f"{name} Filter requires resource expression")
         # if self.AnnotationKey is None:
         #    raise ValueError(
         #        "%s Filter requires annotation key" % name)
 
         if self.RelatedResource is None:
-            raise ValueError(
-                "%s Filter requires resource manager spec" % name)
+            raise ValueError(f"{name} Filter requires resource manager spec")
         return super(RelatedResourceFilter, self).validate()
 
     def get_related_ids(self, resources):
-        return set(jmespath.search(
-            "[].%s" % self.RelatedIdsExpression, resources))
+        return set(jmespath.search(f"[].{self.RelatedIdsExpression}", resources))
 
     def get_related(self, resources):
         resource_manager = self.get_resource_manager()
@@ -107,7 +104,7 @@ class RelatedResourceFilter(ValueFilter):
 
     def _add_annotations(self, related_ids, resource):
         if self.AnnotationKey is not None:
-            akey = 'c7n:%s' % self.AnnotationKey
+            akey = f'c7n:{self.AnnotationKey}'
             resource[akey] = list(set(related_ids).union(resource.get(akey, [])))
 
     def process(self, resources, event=None):

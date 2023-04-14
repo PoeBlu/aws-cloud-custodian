@@ -36,9 +36,8 @@ class DataSet(QueryResourceManager):
             if 'protoPayload' in event:
                 _, method = event['protoPayload']['methodName'].split('.')
                 if method not in ('insert', 'update'):
-                    raise RuntimeError("unknown event %s" % event)
-                expr = 'protoPayload.serviceData.dataset{}Response.resource.datasetName'.format(
-                    method.capitalize())
+                    raise RuntimeError(f"unknown event {event}")
+                expr = f'protoPayload.serviceData.dataset{method.capitalize()}Response.resource.datasetName'
                 ref = jmespath.search(expr, event)
             else:
                 ref = event

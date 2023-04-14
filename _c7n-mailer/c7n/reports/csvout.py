@@ -65,8 +65,8 @@ log = logging.getLogger('custodian.reports')
 
 def report(policies, start_date, options, output_fh, raw_output_fh=None):
     """Format a policy's extant records into a report."""
-    regions = set([p.options.region for p in policies])
-    policy_names = set([p.name for p in policies])
+    regions = {p.options.region for p in policies}
+    policy_names = {p.name for p in policies}
     formatter = Formatter(
         policies[0].resource_manager.resource_type,
         extra_fields=options.field,
@@ -124,17 +124,11 @@ def _get_values(record, field_list, tag_map):
         elif field.startswith(list_prefix):
             list_field = field.replace(list_prefix, '', 1)
             value = jmespath.search(list_field, record)
-            if value is None:
-                value = ''
-            else:
-                value = ', '.join([str(v) for v in value])
+            value = '' if value is None else ', '.join([str(v) for v in value])
         elif field.startswith(count_prefix):
             count_field = field.replace(count_prefix, '', 1)
             value = jmespath.search(count_field, record)
-            if value is None:
-                value = ''
-            else:
-                value = str(len(value))
+            value = '' if value is None else str(len(value))
         else:
             value = jmespath.search(field, record)
             if value is None:
@@ -167,7 +161,7 @@ class Formatter(object):
         if include_default_fields:
             fields.update(OrderedDict(zip(mfields, mfields)))
 
-        for index, field in enumerate(extra_fields):
+        for field in extra_fields:
             # TODO this type coercion should be done at cli input, not here
             h, cexpr = field.split('=', 1)
             fields[h] = cexpr
@@ -204,20 +198,15 @@ class Formatter(object):
         if not records:
             return []
 
-        # Sort before unique to get the first/latest record
-        date_sort = ('CustodianDate' in records[0] and 'CustodianDate' or
-                     self._date_field)
-        if date_sort:
+        if date_sort := (
+            'CustodianDate' in records[0] and 'CustodianDate' or self._date_field
+        ):
             records.sort(
                 key=lambda r: r[date_sort], reverse=reverse)
 
-        if unique:
-            uniq = self.uniq_by_id(records)
-        else:
-            uniq = records
+        uniq = self.uniq_by_id(records) if unique else records
         log.debug("Uniqued from %d to %d" % (len(records), len(uniq)))
-        rows = list(map(self.extract_csv, uniq))
-        return rows
+        return list(map(self.extract_csv, uniq))
 
 
 def fs_record_set(output_path, policy_name):
@@ -247,12 +236,8 @@ def record_set(session_factory, bucket, key_prefix, start_date, specify_hour=Fal
     key_count = 0
 
     date = start_date.strftime('%Y/%m/%d')
-    if specify_hour:
-        date += "/{}".format(start_date.hour)
-    else:
-        date += "/00"
-
-    marker = "{}/{}/resources.json.gz".format(key_prefix.strip("/"), date)
+    date += f"/{start_date.hour}" if specify_hour else "/00"
+    marker = f'{key_prefix.strip("/")}/{date}/resources.json.gz'
 
     p = s3.get_paginator('list_objects_v2').paginate(
         Bucket=bucket,

@@ -122,10 +122,11 @@ class Webhook(EventAction):
                 body=prepared_body,
                 headers=prepared_headers)
 
-            self.log.info("%s got response %s with URL %s" %
-                          (self.method, res.status, prepared_url))
+            self.log.info(
+                f"{self.method} got response {res.status} with URL {prepared_url}"
+            )
         except urllib3.exceptions.HTTPError as e:
-            self.log.error("Error calling %s. Code: %s" % (prepared_url, e.reason))
+            self.log.error(f"Error calling {prepared_url}. Code: {e.reason}")
 
     def _build_headers(self, resource):
         return {k: jmespath.search(v, resource) for k, v in self.headers.items()}
@@ -144,8 +145,7 @@ class Webhook(EventAction):
         evaluated_params = {k: jmespath.search(v, resource) for k, v in self.query_params.items()}
 
         url_parts = list(parse.urlparse(self.url))
-        query = dict(parse.parse_qsl(url_parts[4]))
-        query.update(evaluated_params)
+        query = dict(parse.parse_qsl(url_parts[4])) | evaluated_params
         url_parts[4] = parse.urlencode(query)
 
         return parse.urlunparse(url_parts)
@@ -153,7 +153,8 @@ class Webhook(EventAction):
     def _build_body(self, resource):
         """Create a JSON body and dump it to encoded bytes."""
 
-        if not self.body:
-            return None
-
-        return json.dumps(jmespath.search(self.body, resource)).encode('utf-8')
+        return (
+            json.dumps(jmespath.search(self.body, resource)).encode('utf-8')
+            if self.body
+            else None
+        )

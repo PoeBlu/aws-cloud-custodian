@@ -40,15 +40,15 @@ def custodian_archive(packages=None):
     # but for pure python packages, if we have a local install and its
     # relatively small, it might be faster to just upload.
     #
-    requirements = set()
-    requirements.add('jmespath')
-    requirements.add('retrying')
-    requirements.add('python-dateutil')
-    requirements.add('ratelimiter>=1.2.0.post0')
-    requirements.add('google-auth>=1.4.1')
-    requirements.add('google-auth-httplib2>=0.0.3')
-    requirements.add('google-api-python-client>=1.7.3')
-
+    requirements = {
+        'jmespath',
+        'retrying',
+        'python-dateutil',
+        'ratelimiter>=1.2.0.post0',
+        'google-auth>=1.4.1',
+        'google-auth-httplib2>=0.0.3',
+        'google-api-python-client>=1.7.3',
+    }
     archive.add_contents(
         'requirements.txt',
         '\n'.join(sorted(requirements)))
@@ -68,9 +68,9 @@ class CloudFunctionManager(object):
         """List extant cloud functions."""
         return self.client.execute_command(
             'list',
-            {'parent': "projects/{}/locations/{}".format(
-                self.session.get_default_project(),
-                self.region)}
+            {
+                'parent': f"projects/{self.session.get_default_project()}/locations/{self.region}"
+            },
         ).get('functions', [])
 
     def remove(self, func):
@@ -79,8 +79,7 @@ class CloudFunctionManager(object):
         # delete event sources
         for e in func.events:
             e.remove(func)
-        func_name = "projects/{}/locations/{}/functions/{}".format(
-            project, self.region, func.name)
+        func_name = f"projects/{project}/locations/{self.region}/functions/{func.name}"
         try:
             return self.client.execute_command('delete', {'name': func_name})
         except errors.HttpError as e:
@@ -90,8 +89,7 @@ class CloudFunctionManager(object):
     def publish(self, func):
         """publish the given function."""
         project = self.session.get_default_project()
-        func_name = "projects/{}/locations/{}/functions/{}".format(
-            project, self.region, func.name)
+        func_name = f"projects/{project}/locations/{self.region}/functions/{func.name}"
         func_info = self.get(func.name)
         source_url = None
 
@@ -114,24 +112,22 @@ class CloudFunctionManager(object):
 
         if func_info is None:
             log.info("creating function")
-            response = self.client.execute_command(
-                'create', {
-                    'location': "projects/{}/locations/{}".format(
-                        project, self.region),
-                    'body': config})
+            return self.client.execute_command(
+                'create',
+                {
+                    'location': f"projects/{project}/locations/{self.region}",
+                    'body': config,
+                },
+            )
+        elif delta := delta_resource(func_info, config, ('httpsTrigger',)):
+            update_mask = ','.join(delta)
+            log.info("updating function config %s", update_mask)
+            return self.client.execute_command(
+                'patch',
+                {'name': func_name, 'body': config, 'updateMask': update_mask},
+            )
         else:
-            delta = delta_resource(func_info, config, ('httpsTrigger',))
-            if not delta:
-                response = None
-            else:
-                update_mask = ','.join(delta)
-                log.info("updating function config %s", update_mask)
-                response = self.client.execute_command(
-                    'patch', {
-                        'name': func_name,
-                        'body': config,
-                        'updateMask': update_mask})
-        return response
+            return None
 
     def metrics(self, funcs, start, end, period=5 * 60):
         """Get the metrics for a set of functions."""
@@ -142,8 +138,7 @@ class CloudFunctionManager(object):
     def get(self, func_name, qualifier=None):
         """Get the details on a given function."""
         project = self.session.get_default_project()
-        func_name = "projects/{}/locations/{}/functions/{}".format(
-            project, self.region, func_name)
+        func_name = f"projects/{project}/locations/{self.region}/functions/{func_name}"
         try:
             return self.client.execute_query('get', {'name': func_name})
         except errors.HttpError as e:
@@ -174,9 +169,10 @@ class CloudFunctionManager(object):
         # Generate source upload url
         url = self.client.execute_command(
             'generateUploadUrl',
-            {'parent': 'projects/{}/locations/{}'.format(
-                self.session.get_default_project(),
-                region)}).get('uploadUrl')
+            {
+                'parent': f'projects/{self.session.get_default_project()}/locations/{region}'
+            },
+        ).get('uploadUrl')
         log.debug("uploading function code %s", url)
         http = self._get_http_client(self.client)
         headers, response = http.request(
@@ -248,7 +244,7 @@ class CloudFunction(object):
 
     @property
     def events(self):
-        return [e for e in self.func_data.get('events', ())]
+        return list(self.func_data.get('events', ()))
 
     def get_archive(self):
         return self.archive
@@ -277,7 +273,7 @@ class CloudFunction(object):
             conf['serviceAccountEmail'] = self.service_account
 
         for e in self.events:
-            conf.update(e.get_config(self))
+            conf |= e.get_config(self)
         return conf
 
 
@@ -409,9 +405,7 @@ class PubSubSource(EventSource):
                 'resource': self.get_topic_param()}}
 
     def get_topic_param(self, topic=None, project=None):
-        return 'projects/{}/topics/{}'.format(
-            project or self.session.get_default_project(),
-            topic or self.data['topic'])
+        return f"projects/{project or self.session.get_default_project()}/topics/{topic or self.data['topic']}"
 
     def ensure_topic(self):
         """Verify the pub/sub topic exists.
@@ -501,9 +495,8 @@ class PeriodicEvent(EventSource):
         client = self.session.client(
             'cloudscheduler', 'v1beta1', 'projects.locations.jobs')
 
-        delta = self.diff_job(client, job)
-        if delta:
-            log.info("update periodic function - %s" % (", ".join(delta)))
+        if delta := self.diff_job(client, job):
+            log.info(f'update periodic function - {", ".join(delta)}')
             return client.execute_command(
                 'patch', {
                     'name': job['name'],
@@ -512,11 +505,12 @@ class PeriodicEvent(EventSource):
         elif delta is not None:
             return
         return client.execute_command(
-            'create', {
-                'parent': 'projects/{}/locations/{}'.format(
-                    self.session.get_default_project(),
-                    self.data.get('region', DEFAULT_REGION)),
-                'body': job})
+            'create',
+            {
+                'parent': f"projects/{self.session.get_default_project()}/locations/{self.data.get('region', DEFAULT_REGION)}",
+                'body': job,
+            },
+        )
 
     def remove(self, func):
         target = self.get_target(func)
@@ -542,35 +536,28 @@ class PeriodicEvent(EventSource):
             return None
 
         delta = delta_resource(job, target_job, ignore=('httpTarget', 'pubSubTarget'))
-        if not delta:
-            return False
-        return delta
+        return delta if delta else False
 
     def get_target(self, func):
         if self.target_type == 'http':
             return HTTPEvent(self.session, self.data)
         elif self.target_type == 'pubsub':
             config = dict(self.data)
-            config['topic'] = '{}{}'.format(self.prefix, func.name)
+            config['topic'] = f'{self.prefix}{func.name}'
             return PubSubSource(self.session, config)
         else:
-            raise ValueError("Unknown periodic target: %s" % self.target_type)
+            raise ValueError(f"Unknown periodic target: {self.target_type}")
 
     def get_job_config(self, func, target):
         job = {
-            'name': "projects/{}/locations/{}/jobs/{}".format(
-                self.session.get_default_project(),
-                self.data.get('region', DEFAULT_REGION),
-                self.data.get('name', '{}{}'.format(self.prefix, func.name))),
+            'name': f"projects/{self.session.get_default_project()}/locations/{self.data.get('region', DEFAULT_REGION)}/jobs/{self.data.get('name', f'{self.prefix}{func.name}')}",
             'schedule': self.data['schedule'],
-            'timeZone': self.data.get('tz', 'Etc/UTC')}
+            'timeZone': self.data.get('tz', 'Etc/UTC'),
+        }
 
         if self.target_type == 'http':
             job['httpTarget'] = {
-                'uri': 'https://{}-{}.cloudfunctions.net/{}'.format(
-                    self.data.get('region', DEFAULT_REGION),
-                    self.session.get_default_project(),
-                    func.name)
+                'uri': f"https://{self.data.get('region', DEFAULT_REGION)}-{self.session.get_default_project()}.cloudfunctions.net/{func.name}"
             }
         elif self.target_type == 'pubsub':
             job['pubsubTarget'] = {
@@ -614,19 +601,17 @@ class LogSubscriber(EventSource):
         if self.data.get('scope', 'log') == 'log':
             if log_info.scope_type != 'projects':
                 raise ValueError("Invalid log subscriber scope")
-            parent = "%s/%s" % (log_info.scope_type, log_info.scope_id)
+            parent = f"{log_info.scope_type}/{log_info.scope_id}"
         elif self.data['scope'] == 'project':
-            parent = 'projects/{}'.format(
-                self.data.get('scope_id', self.session.get_default_project()))
+            parent = f"projects/{self.data.get('scope_id', self.session.get_default_project())}"
         elif self.data['scope'] == 'organization':
-            parent = 'organizations/{}'.format(self.data['scope_id'])
+            parent = f"organizations/{self.data['scope_id']}"
         elif self.data['scope'] == 'folder':
-            parent = 'folders/{}'.format(self.data['scope_id'])
+            parent = f"folders/{self.data['scope_id']}"
         elif self.data['scope'] == 'billing':
-            parent = 'billingAccounts/{}'.format(self.data['scope_id'])
+            parent = f"billingAccounts/{self.data['scope_id']}"
         else:
-            raise ValueError(
-                'invalid log subscriber scope %s' % (self.data))
+            raise ValueError(f'invalid log subscriber scope {self.data}')
         return parent
 
     def get_sink(self, topic_info=""):
@@ -638,11 +623,10 @@ class LogSubscriber(EventSource):
         sink = {
             'parent': parent,
             'uniqueWriterIdentity': False,
-            # Sink body
             'body': {
                 'name': self.data['name'],
-                'destination': "pubsub.googleapis.com/%s" % topic_info
-            }
+                'destination': f"pubsub.googleapis.com/{topic_info}",
+            },
         }
 
         if log_filter is not None:
@@ -651,7 +635,7 @@ class LogSubscriber(EventSource):
             sink['body']['includeChildren'] = True
             sink['uniqueWriterIdentity'] = True
 
-        sink_path = '%s/sinks/%s' % (sink['parent'], sink['body']['name'])
+        sink_path = f"{sink['parent']}/sinks/{sink['body']['name']}"
 
         return scope, sink_path, sink
 
@@ -659,7 +643,7 @@ class LogSubscriber(EventSource):
         """Ensure the log sink and its pub sub topic exist."""
         topic_info = self.pubsub.ensure_topic()
         scope, sink_path, sink_info = self.get_sink(topic_info)
-        client = self.session.client('logging', 'v2', '%s.sinks' % scope)
+        client = self.session.client('logging', 'v2', f'{scope}.sinks')
         try:
             sink = client.execute_command('get', {'sinkName': sink_path})
         except HttpError as e:
@@ -667,8 +651,7 @@ class LogSubscriber(EventSource):
                 raise
             sink = client.execute_command('create', sink_info)
         else:
-            delta = delta_resource(sink, sink_info['body'])
-            if delta:
+            if delta := delta_resource(sink, sink_info['body']):
                 sink_info['updateMask'] = ','.join(delta)
                 sink_info['sinkName'] = sink_path
                 sink_info.pop('parent')
@@ -690,7 +673,8 @@ class LogSubscriber(EventSource):
         parent = self.get_parent(self.get_log())
         _, sink_path, _ = self.get_sink()
         client = self.session.client(
-            'logging', 'v2', '%s.sinks' % (parent.split('/', 1)[0]))
+            'logging', 'v2', f"{parent.split('/', 1)[0]}.sinks"
+        )
         try:
             client.execute_command(
                 'delete', {'sinkName': sink_path})
@@ -717,17 +701,15 @@ class ApiSubscriber(EventSource):
         self.session = session
 
     def get_subscription(self, func):
-        log_name = "{}/{}/logs/cloudaudit.googleapis.com%2Factivity".format(
-            self.data.get('scope', 'projects'),
-            self.session.get_default_project())
-        log_filter = 'logName = "%s"' % log_name
-        log_filter += " AND protoPayload.methodName = (%s)" % (
-            ' OR '.join(['"%s"' % m for m in self.data['methods']]))
+        log_name = f"{self.data.get('scope', 'projects')}/{self.session.get_default_project()}/logs/cloudaudit.googleapis.com%2Factivity"
+        log_filter = f'logName = "{log_name}"'
+        log_filter += f""" AND protoPayload.methodName = ({' OR '.join([f'"{m}"' for m in self.data['methods']])})"""
         return {
-            'topic': '{}audit-{}'.format(self.prefix, func.name),
-            'name': '{}audit-{}'.format(self.prefix, func.name),
+            'topic': f'{self.prefix}audit-{func.name}',
+            'name': f'{self.prefix}audit-{func.name}',
             'log': log_name,
-            'filter': log_filter}
+            'filter': log_filter,
+        }
 
     def add(self, func):
         return LogSubscriber(self.session, self.get_subscription(func)).add(func)

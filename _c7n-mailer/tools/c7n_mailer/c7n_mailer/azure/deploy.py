@@ -28,7 +28,6 @@ try:
     from c7n.utils import local_session
 except ImportError:
     FunctionPackage = None
-    pass
 
 
 def build_function_package(config, function_name):
@@ -46,10 +45,11 @@ def build_function_package(config, function_name):
                   excluded_packages=['azure-cli-core', 'distlib', 'future', 'futures'])
 
     package.pkg.add_contents(
-        function_name + '/function.json',
-        contents=package.get_function_config({'mode':
-                                              {'type': 'azure-periodic',
-                                               'schedule': schedule}}))
+        f'{function_name}/function.json',
+        contents=package.get_function_config(
+            {'mode': {'type': 'azure-periodic', 'schedule': schedule}}
+        ),
+    )
 
     # Add mail templates
     for d in set(config['templates_folders']):
@@ -57,13 +57,13 @@ def build_function_package(config, function_name):
             continue
         for t in [f for f in os.listdir(d) if os.path.splitext(f)[1] == '.j2']:
             with open(os.path.join(d, t)) as fh:
-                package.pkg.add_contents(function_name + '/msg-templates/%s' % t, fh.read())
+                package.pkg.add_contents(f'{function_name}/msg-templates/{t}', fh.read())
 
     function_config = copy.deepcopy(config)
-    function_config['templates_folders'] = [function_name + '/msg-templates/']
+    function_config['templates_folders'] = [f'{function_name}/msg-templates/']
     package.pkg.add_contents(
-        function_name + '/config.json',
-        contents=json.dumps(function_config))
+        f'{function_name}/config.json', contents=json.dumps(function_config)
+    )
 
     package.close()
     return package
@@ -92,11 +92,15 @@ def provision(config):
     sub_id = local_session(Session).get_subscription_id()
     suffix = StringUtils.naming_hash(rg_name + sub_id)
 
-    storage_account = AzureFunctionMode.extract_properties(function_properties,
-                                                    'storageAccount',
-                                                    {'name': 'mailerstorage' + suffix,
-                                                     'location': location,
-                                                     'resource_group_name': rg_name})
+    storage_account = AzureFunctionMode.extract_properties(
+        function_properties,
+        'storageAccount',
+        {
+            'name': f'mailerstorage{suffix}',
+            'location': location,
+            'resource_group_name': rg_name,
+        },
+    )
 
     app_insights = AzureFunctionMode.extract_properties(function_properties,
                                                     'appInsights',
@@ -117,7 +121,7 @@ def provision(config):
 
     FunctionAppUtilities.deploy_function_app(params)
 
-    log.info("Building function package for %s" % function_app_name)
+    log.info(f"Building function package for {function_app_name}")
     package = build_function_package(config, function_name)
 
     log.info("Function package built, size is %dMB" % (package.pkg.size / (1024 * 1024)))

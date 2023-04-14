@@ -66,7 +66,7 @@ class PubSubSubscriptionTest(BaseTest):
     def test_pubsub_subscription_get(self):
         project_id = 'cloud-custodian'
         subscription_name = 'custodian'
-        resource_name = 'projects/{}/subscriptions/{}'.format(project_id, subscription_name)
+        resource_name = f'projects/{project_id}/subscriptions/{subscription_name}'
         session_factory = self.replay_flight_data(
             'pubsub-subscription-get', project_id=project_id)
 

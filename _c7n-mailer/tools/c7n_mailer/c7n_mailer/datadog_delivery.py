@@ -50,27 +50,34 @@ class DataDogDelivery(object):
         if sqs_message and sqs_message.get('resources', False):
             for resource in sqs_message['resources']:
                 tags = [
-                    'event:{}'.format(sqs_message['event']),
-                    'account_id:{}'.format(sqs_message['account_id']),
-                    'account:{}'.format(sqs_message['account']),
-                    'region:{}'.format(sqs_message['region'])
+                    f"event:{sqs_message['event']}",
+                    f"account_id:{sqs_message['account_id']}",
+                    f"account:{sqs_message['account']}",
+                    f"region:{sqs_message['region']}",
+                    *[
+                        '{key}:{value}'.format(key=key, value=resource[key])
+                        for key in resource.keys()
+                        if key != 'Tags'
+                    ],
                 ]
 
-                tags.extend(['{key}:{value}'.format(
-                    key=key, value=resource[key]) for key in resource.keys()
-                    if key != 'Tags'])
                 if resource.get('Tags', False):
                     tags.extend(['{key}:{value}'.format(
                         key=tag['Key'], value=tag['Value']) for tag in resource['Tags']])
 
-                for metric_config in metric_config_map:
-                    datadog_rendered_messages.append({
+                datadog_rendered_messages.extend(
+                    {
                         "metric": metric_config['metric_name'],
-                        "points": (date_time, self._get_metric_value(
-                            metric_config=metric_config, tags=tags)),
-                        "tags": tags
-                    })
-
+                        "points": (
+                            date_time,
+                            self._get_metric_value(
+                                metric_config=metric_config, tags=tags
+                            ),
+                        ),
+                        "tags": tags,
+                    }
+                    for metric_config in metric_config_map
+                )
         # eg: [{'metric': 'metric_name', 'points': (date_time, value),
         # 'tags': ['tag1':'value', 'tag2':'value']}, ...]
         return datadog_rendered_messages

@@ -89,8 +89,7 @@ class InvokeStepFunction(Action):
             self.manager.session_factory).client('stepfunctions')
         arn = self.data['state-machine']
         if not arn.startswith('arn'):
-            arn = 'arn:aws:states:{}:{}:stateMachine:{}'.format(
-                self.manager.config.region, self.manager.config.account_id, arn)
+            arn = f'arn:aws:states:{self.manager.config.region}:{self.manager.config.account_id}:stateMachine:{arn}'
 
         params = {'stateMachineArn': arn}
         pinput = {}
@@ -147,11 +146,7 @@ class TagStepFunction(Tag):
 
     def process_resource_set(self, client, resources, tags):
 
-        tags_lower = []
-
-        for tag in tags:
-            tags_lower.append({k.lower(): v for k, v in tag.items()})
-
+        tags_lower = [{k.lower(): v for k, v in tag.items()} for tag in tags]
         for r in resources:
             client.tag_resource(resourceArn=r['stateMachineArn'], tags=tags_lower)
 

@@ -58,13 +58,7 @@ class TagHelper:
         # get existing tags
         tags = resource.get('tags', {})
 
-        # only determine if any tags_to_delete exist on the resource
-        tags_exist = False
-        for tag in tags_to_delete:
-            if tag in tags:
-                tags_exist = True
-                break
-
+        tags_exist = any(tag in tags for tag in tags_to_delete)
         # only call the resource update if there are tags to delete tags
         if tags_exist:
             resource_tags = {key: tags[key] for key in tags if key not in tags_to_delete}
@@ -81,13 +75,8 @@ class TagHelper:
         for key in tags_to_add:
 
             # nothing to do if the tag and value already exists on the resource
-            if key in tags:
-                if tags[key] != tags_to_add[key]:
-                    new_or_updated_tags = True
-            else:
-                # the tag doesn't exist or the value was updated
+            if key in tags and tags[key] != tags_to_add[key] or key not in tags:
                 new_or_updated_tags = True
-
             tags[key] = tags_to_add[key]
 
         # call the arm resource update method if there are new or updated tags
@@ -101,7 +90,6 @@ class TagHelper:
         tags = {k.lower(): v for k, v in resource.get('tags', {}).items()}
         value = tags.get(tag, False)
 
-        if value is not False:
-            if utf_8:
-                value = value.encode('utf8').decode('utf8')
+        if value is not False and utf_8:
+            value = value.encode('utf8').decode('utf8')
         return value

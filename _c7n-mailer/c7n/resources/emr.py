@@ -68,17 +68,13 @@ class EMRCluster(QueryResourceManager):
     def get_resources(self, ids):
         # no filtering by id set supported at the api
         client = local_session(self.session_factory).client('emr')
-        results = []
-        for jid in ids:
-            results.append(
-                client.describe_cluster(ClusterId=jid)['Cluster'])
-        return results
+        return [client.describe_cluster(ClusterId=jid)['Cluster'] for jid in ids]
 
     def resources(self, query=None):
         q = self.consolidate_query_filter()
         if q is not None:
             query = query or {}
-            for i in range(0, len(q)):
+            for i in range(len(q)):
                 query[q[i]['Name']] = q[i]['Values']
         return super(EMRCluster, self).resources(query=query)
 
@@ -240,7 +236,7 @@ class Terminate(BaseAction):
 
 
 # Valid EMR Query Filters
-EMR_VALID_FILTERS = set(('CreatedAfter', 'CreatedBefore', 'ClusterStates'))
+EMR_VALID_FILTERS = {'CreatedAfter', 'CreatedBefore', 'ClusterStates'}
 
 
 class QueryFilter(object):
@@ -250,8 +246,7 @@ class QueryFilter(object):
         results = []
         for d in data:
             if not isinstance(d, dict):
-                raise PolicyValidationError(
-                    "EMR Query Filter Invalid structure %s" % d)
+                raise PolicyValidationError(f"EMR Query Filter Invalid structure {d}")
             results.append(cls(d).validate())
         return results
 
@@ -261,16 +256,16 @@ class QueryFilter(object):
         self.value = None
 
     def validate(self):
-        if not len(list(self.data.keys())) == 1:
-            raise PolicyValidationError(
-                "EMR Query Filter Invalid %s" % self.data)
+        if len(list(self.data.keys())) != 1:
+            raise PolicyValidationError(f"EMR Query Filter Invalid {self.data}")
         self.key = list(self.data.keys())[0]
         self.value = list(self.data.values())[0]
 
         if self.key not in EMR_VALID_FILTERS and not self.key.startswith(
                 'tag:'):
             raise PolicyValidationError(
-                "EMR Query Filter invalid filter name %s" % (self.data))
+                f"EMR Query Filter invalid filter name {self.data}"
+            )
 
         if self.value is None:
             raise PolicyValidationError(

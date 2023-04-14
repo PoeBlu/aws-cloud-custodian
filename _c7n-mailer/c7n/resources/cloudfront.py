@@ -133,7 +133,7 @@ class IsWafEnabled(Filter):
         target_acl_id = waf_name_id_map.get(target_acl, target_acl)
 
         if target_acl_id and target_acl_id not in waf_name_id_map.values():
-            raise ValueError("invalid web acl: %s" % (target_acl_id))
+            raise ValueError(f"invalid web acl: {target_acl_id}")
 
         state = self.data.get('state', False)
         results = []
@@ -177,14 +177,10 @@ class MismatchS3Origin(Filter):
     retry = staticmethod(get_retry(('Throttling',)))
 
     def is_s3_domain(self, x):
-        bucket_match = self.s3_prefix.match(x['DomainName'])
-
-        if bucket_match:
+        if bucket_match := self.s3_prefix.match(x['DomainName']):
             return bucket_match.group()
 
-        domain_match = self.s3_suffix.match(x['DomainName'])
-
-        if domain_match:
+        if domain_match := self.s3_suffix.match(x['DomainName']):
             value = x['OriginPath']
 
             if value.startswith('/'):
@@ -206,15 +202,15 @@ class MismatchS3Origin(Filter):
             r['c7n:mismatched-s3-origin'] = []
             for x in r['Origins']['Items']:
                 if 'S3OriginConfig' in x:
-                    bucket_match = self.s3_prefix.match(x['DomainName'])
-                    if bucket_match:
+                    if bucket_match := self.s3_prefix.match(x['DomainName']):
                         target_bucket = self.s3_prefix.match(x['DomainName']).group()
                 elif 'CustomOriginConfig' in x and self.data.get('check_custom_origins'):
                     target_bucket = self.is_s3_domain(x)
 
                 if target_bucket is not None and target_bucket not in buckets:
-                    self.log.debug("Bucket %s not found in distribution %s hosting account."
-                                   % (target_bucket, r['Id']))
+                    self.log.debug(
+                        f"Bucket {target_bucket} not found in distribution {r['Id']} hosting account."
+                    )
                     r['c7n:mismatched-s3-origin'].append(target_bucket)
                     results.append(r)
 
@@ -239,7 +235,7 @@ class SetWaf(BaseAction):
         target_acl_id = waf_name_id_map.get(target_acl, target_acl)
 
         if target_acl_id not in waf_name_id_map.values():
-            raise ValueError("invalid web acl: %s" % (target_acl_id))
+            raise ValueError(f"invalid web acl: {target_acl_id}")
 
         client = local_session(self.manager.session_factory).client(
             'cloudfront')

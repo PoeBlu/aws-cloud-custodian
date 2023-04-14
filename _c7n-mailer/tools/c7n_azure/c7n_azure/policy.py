@@ -163,14 +163,13 @@ class AzureFunctionMode(ServerlessExecutionMode):
             function_suffix)
         FunctionAppUtilities.validate_function_name(function_app_name)
 
-        params = FunctionAppUtilities.FunctionAppInfrastructureParameters(
+        return FunctionAppUtilities.FunctionAppInfrastructureParameters(
             app_insights=app_insights,
             service_plan=service_plan,
             storage_account=storage_account,
             function_app_resource_group_name=service_plan['resource_group_name'],
-            function_app_name=function_app_name)
-
-        return params
+            function_app_name=function_app_name,
+        )
 
     @staticmethod
     def extract_properties(options, name, properties):
@@ -216,7 +215,9 @@ class AzureFunctionMode(ServerlessExecutionMode):
         raise NotImplementedError("subclass responsibility")
 
     def build_functions_package(self, queue_name=None, target_subscription_ids=None):
-        self.log.info("Building function package for %s" % self.function_params.function_app_name)
+        self.log.info(
+            f"Building function package for {self.function_params.function_app_name}"
+        )
 
         package = FunctionPackage(self.policy_name, target_subscription_ids=target_subscription_ids)
         package.build(self.policy.data,
@@ -290,8 +291,8 @@ class AzureEventGridMode(AzureFunctionMode):
 
         if not resources:
             self.policy.log.info(
-                "policy: %s resources: %s no resources found" % (
-                    self.policy.name, self.policy.resource_type))
+                f"policy: {self.policy.name} resources: {self.policy.resource_type} no resources found"
+            )
             return
 
         resources = self.policy.resource_manager.filter_resources(
@@ -313,8 +314,7 @@ class AzureEventGridMode(AzureFunctionMode):
                     results = action.process(resources, event)
                 else:
                     results = action.process(resources)
-                self.policy._write_file(
-                    "action-%s" % action.name, utils.dumps(results))
+                self.policy._write_file(f"action-{action.name}", utils.dumps(results))
 
         return resources
 
@@ -334,7 +334,7 @@ class AzureEventGridMode(AzureFunctionMode):
             self.log.info("Storage queue creation succeeded")
             return storage_account
         except Exception as e:
-            self.log.error('Queue creation failed with error: %s' % e)
+            self.log.error(f'Queue creation failed with error: {e}')
             raise SystemExit
 
     def _create_event_subscription(self, storage_account, queue_name, session):
@@ -352,8 +352,9 @@ class AzureEventGridMode(AzureFunctionMode):
             try:
                 AzureEventSubscription.create(destination, queue_name,
                                               subscription_id, session, event_filter)
-                self.log.info('Event grid subscription creation succeeded: subscription_id=%s' %
-                              subscription_id)
+                self.log.info(
+                    f'Event grid subscription creation succeeded: subscription_id={subscription_id}'
+                )
             except Exception as e:
-                self.log.error('Event Subscription creation failed with error: %s' % e)
+                self.log.error(f'Event Subscription creation failed with error: {e}')
                 raise SystemExit

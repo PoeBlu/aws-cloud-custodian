@@ -54,21 +54,21 @@ class SplunkHecDelivery(object):
         :return: list of Splunk payload dicts
         :rtype: list
         """
-        payloads = []
         events = self.get_splunk_events(msg)
         indices = self._splunk_indices_for_message(msg)
+        payloads = []
         for event in events:
-            for index in indices:
-                payloads.append({
+            payloads.extend(
+                {
                     'time': msg_timestamp,
                     'host': 'cloud-custodian',
-                    'source': '%s-cloud-custodian' % event.get(
-                        'account', 'unknown'
-                    ),
+                    'source': f"{event.get('account', 'unknown')}-cloud-custodian",
                     'sourcetype': '_json',
                     'index': index,
-                    'event': event
-                })
+                    'event': event,
+                }
+                for index in indices
+            )
         return payloads
 
     def get_splunk_events(self, msg):
@@ -146,10 +146,7 @@ class SplunkHecDelivery(object):
         :param payloads: list of payload dicts to send to Splunk
         :type payloads: list
         """
-        failed = 0
-        for payload in payloads:
-            if not self._try_send(payload):
-                failed += 1
+        failed = sum(not self._try_send(payload) for payload in payloads)
         if failed != 0:
             raise RuntimeError(
                 'ERROR: {failed} of {count} Splunk HEC messages '
@@ -180,13 +177,10 @@ class SplunkHecDelivery(object):
                 'limit is %d characters. Data will be truncated: %s',
                 len(p), maxlen, p
             )
-        for i in range(0, max_attempts):
+        for _ in range(max_attempts):
             try:
                 self._send_splunk(p)
-                if maxlen is not None and len(p) > maxlen:
-                    # never retry if we're over configured max length
-                    return False
-                return True  # if no exception, just return
+                return maxlen is None or len(p) <= maxlen
             except Exception:
                 sleep_sec = uniform(1, 4)  # random float 1 to 4
                 self.logger.warning(
@@ -232,7 +226,7 @@ class SplunkHecDelivery(object):
                 'Splunk POST returned non-20x response: %s HEADERS=%s BODY: %s',
                 r.status_code, r.headers, r.text
             )
-            raise RuntimeError('POST returned %s' % r.status_code)
+            raise RuntimeError(f'POST returned {r.status_code}')
         try:
             j = r.json()
         except Exception:
@@ -241,7 +235,7 @@ class SplunkHecDelivery(object):
             self.logger.error(
                 'Splunk POST returned non-success response: %s', j
             )
-            raise RuntimeError('POST returned non-success response: %s' % j)
+            raise RuntimeError(f'POST returned non-success response: {j}')
 
     def tags_for_resource(self, res):
         """

@@ -101,9 +101,12 @@ class SqlInstanceChildWithSelfLink(ChildResourceManager):
         :param child_instance: a dictionary to get parent parameters from
         :return: project_id and database_id extracted from child_instance
         """
-        return {'project_id': re.match('.*?/projects/(.*?)/instances/.*',
-                                    child_instance['selfLink']).group(1),
-                'database_id': child_instance['instance']}
+        return {
+            'project_id': re.match(
+                '.*?/projects/(.*?)/instances/.*', child_instance['selfLink']
+            )[1],
+            'database_id': child_instance['instance'],
+        }
 
 
 @resources.register('sql-backup-run')

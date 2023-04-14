@@ -40,29 +40,21 @@ class EmailDelivery(object):
         return None
 
     def get_valid_emails_from_list(self, targets):
-        emails = []
-        for target in targets:
-            if is_email(target):
-                emails.append(target)
-        return emails
+        return [target for target in targets if is_email(target)]
 
     def get_event_owner_email(self, targets, event):
         if 'event-owner' in targets:
-            aws_username = get_aws_username_from_event(self.logger, event)
-            if aws_username:
+            if aws_username := get_aws_username_from_event(self.logger, event):
                 # is using SSO, the target might already be an email
                 if is_email(aws_username):
                     return [aws_username]
-                # if the LDAP config is set, lookup in ldap
                 elif self.config.get('ldap_uri', False):
                     return self.ldap_lookup.get_email_to_addrs_from_uid(aws_username)
 
-                # the org_domain setting is configured, append the org_domain
-                # to the username from AWS
                 elif self.config.get('org_domain', False):
                     org_domain = self.config.get('org_domain', False)
-                    self.logger.info('adding email %s to targets.', aws_username + '@' + org_domain)
-                    return [aws_username + '@' + org_domain]
+                    self.logger.info('adding email %s to targets.', f'{aws_username}@{org_domain}')
+                    return [f'{aws_username}@{org_domain}']
                 else:
                     self.logger.warning('unable to lookup owner email. \
                             Please configure LDAP or org_domain')
@@ -83,9 +75,8 @@ class EmailDelivery(object):
         # some types of resources, like iam-user have 'Username' in the resource, if the policy
         # opted in to resource_ldap_lookup_username: true, we'll do a lookup and send an email
         if sqs_message['action'].get('resource_ldap_lookup_username'):
-            ldap_uid_emails = ldap_uid_emails + self.ldap_lookup.get_email_to_addrs_from_uid(
-                resource.get('UserName'),
-                manager=email_manager
+            ldap_uid_emails += self.ldap_lookup.get_email_to_addrs_from_uid(
+                resource.get('UserName'), manager=email_manager
             )
         for ldap_uid_tag_value in ldap_uid_tag_values:
             ldap_emails_set = self.ldap_lookup.get_email_to_addrs_from_uid(
@@ -114,7 +105,7 @@ class EmailDelivery(object):
             self.logger.debug(
                 "Using org_domain to reconstruct email addresses from contact_tags values")
             org_domain = self.config.get('org_domain')
-            org_emails = [uid + '@' + org_domain for uid in non_email_ids]
+            org_emails = [f'{uid}@{org_domain}' for uid in non_email_ids]
 
         return list(chain(explicit_emails, ldap_emails, org_emails))
 
@@ -145,7 +136,7 @@ class EmailDelivery(object):
         # or it's an email from an aws event username from an ldap_lookup
         email_to_addrs_to_resources_map = {}
         targets = sqs_message['action']['to'] + \
-            (sqs_message['action']['cc'] if 'cc' in sqs_message['action'] else [])
+                (sqs_message['action']['cc'] if 'cc' in sqs_message['action'] else [])
         no_owner_targets = self.get_valid_emails_from_list(
             sqs_message['action'].get('owner_absent_contact', [])
         )
@@ -168,9 +159,8 @@ class EmailDelivery(object):
             # this is the list of emails that will be sent for this resource
             resource_emails = []
             # add in any ldap emails to resource_emails
-            resource_emails = resource_emails + self.get_ldap_emails_from_resource(
-                sqs_message,
-                resource
+            resource_emails += self.get_ldap_emails_from_resource(
+                sqs_message, resource
             )
             resource_emails = resource_emails + policy_to_emails
             # add in any emails from resource-owners to resource_owners
@@ -184,31 +174,21 @@ class EmailDelivery(object):
             # owner emails were found, add those addresses
             if len(ro_emails) < 1 and len(no_owner_targets) > 0:
                 resource_emails = resource_emails + no_owner_targets
-            # we allow multiple emails from various places, we'll unique with set to not have any
-            # duplicates, and we'll also sort it so we always have the same key for other resources
-            # and finally we'll make it a tuple, since that is hashable and can be a key in a dict
-            resource_emails = tuple(sorted(set(resource_emails)))
-            # only if there are valid emails available, add it to the map
-            if resource_emails:
+            if resource_emails := tuple(sorted(set(resource_emails))):
                 email_to_addrs_to_resources_map.setdefault(resource_emails, []).append(resource)
-        if email_to_addrs_to_resources_map == {}:
+        if not email_to_addrs_to_resources_map:
             self.logger.debug('Found no email addresses, sending no emails.')
         # eg: { ('milton@initech.com', 'peter@initech.com'): [resource1, resource2, etc] }
         return email_to_addrs_to_resources_map
 
     def get_to_addrs_email_messages_map(self, sqs_message):
         to_addrs_to_resources_map = self.get_email_to_addrs_to_resources_map(sqs_message)
-        to_addrs_to_mimetext_map = {}
-        for to_addrs, resources in six.iteritems(to_addrs_to_resources_map):
-            to_addrs_to_mimetext_map[to_addrs] = get_mimetext_message(
-                self.config,
-                self.logger,
-                sqs_message,
-                resources,
-                list(to_addrs)
+        return {
+            to_addrs: get_mimetext_message(
+                self.config, self.logger, sqs_message, resources, list(to_addrs)
             )
-        # eg: { ('milton@initech.com', 'peter@initech.com'): mimetext_message }
-        return to_addrs_to_mimetext_map
+            for to_addrs, resources in six.iteritems(to_addrs_to_resources_map)
+        }
 
     def send_c7n_email(self, sqs_message, email_to_addrs, mimetext_msg):
         try:
@@ -231,10 +211,6 @@ class EmailDelivery(object):
                     self.config
                 )
             )
-        self.logger.info("Sending account:%s policy:%s %s:%s email:%s to %s" % (
-            sqs_message.get('account', ''),
-            sqs_message['policy']['name'],
-            sqs_message['policy']['resource'],
-            str(len(sqs_message['resources'])),
-            sqs_message['action'].get('template', 'default'),
-            email_to_addrs))
+        self.logger.info(
+            f"Sending account:{sqs_message.get('account', '')} policy:{sqs_message['policy']['name']} {sqs_message['policy']['resource']}:{len(sqs_message['resources'])} email:{sqs_message['action'].get('template', 'default')} to {email_to_addrs}"
+        )

@@ -19,7 +19,7 @@ class AppEngineAppTest(BaseTest):
 
     def test_app_query(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/{}'.format(project_id)
+        app_name = f'apps/{project_id}'
         session_factory = self.replay_flight_data(
             'app-engine-query', project_id=project_id)
 
@@ -33,7 +33,7 @@ class AppEngineAppTest(BaseTest):
 
     def test_app_get(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/' + project_id
+        app_name = f'apps/{project_id}'
         session_factory = self.replay_flight_data(
             'app-engine-get', project_id=project_id)
 
@@ -51,9 +51,9 @@ class AppEngineCertificateTest(BaseTest):
 
     def test_certificate_query(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/{}'.format(project_id)
+        app_name = f'apps/{project_id}'
         certificate_id = '12277184'
-        certificate_name = '{}/authorizedCertificates/{}'.format(app_name, certificate_id)
+        certificate_name = f'{app_name}/authorizedCertificates/{certificate_id}'
         session_factory = self.replay_flight_data(
             'app-engine-certificate-query', project_id=project_id)
 
@@ -69,9 +69,9 @@ class AppEngineCertificateTest(BaseTest):
 
     def test_certificate_get(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/' + project_id
+        app_name = f'apps/{project_id}'
         certificate_id = '12277184'
-        certificate_name = '{}/authorizedCertificates/{}'.format(app_name, certificate_id)
+        certificate_name = f'{app_name}/authorizedCertificates/{certificate_id}'
         session_factory = self.replay_flight_data(
             'app-engine-certificate-get', project_id=project_id)
 
@@ -91,9 +91,9 @@ class AppEngineDomainTest(BaseTest):
 
     def test_domain_query(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/{}'.format(project_id)
+        app_name = f'apps/{project_id}'
         domain_id = 'gcp-li.ga'
-        domain_name = '{}/authorizedDomains/{}'.format(app_name, domain_id)
+        domain_name = f'{app_name}/authorizedDomains/{domain_id}'
         session_factory = self.replay_flight_data(
             'app-engine-domain-query', project_id=project_id)
 
@@ -112,9 +112,9 @@ class AppEngineDomainMappingTest(BaseTest):
 
     def test_domain_mapping_query(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/{}'.format(project_id)
+        app_name = f'apps/{project_id}'
         domain_mapping_id = 'alex.gcp-li.ga'
-        domain_mapping_name = '{}/domainMappings/{}'.format(app_name, domain_mapping_id)
+        domain_mapping_name = f'{app_name}/domainMappings/{domain_mapping_id}'
         session_factory = self.replay_flight_data(
             'app-engine-domain-mapping-query', project_id=project_id)
 
@@ -130,9 +130,9 @@ class AppEngineDomainMappingTest(BaseTest):
 
     def test_domain_mapping_get(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/' + project_id
+        app_name = f'apps/{project_id}'
         domain_mapping_id = 'alex.gcp-li.ga'
-        domain_mapping_name = '{}/domainMappings/{}'.format(app_name, domain_mapping_id)
+        domain_mapping_name = f'{app_name}/domainMappings/{domain_mapping_id}'
         session_factory = self.replay_flight_data(
             'app-engine-domain-mapping-get', project_id=project_id)
 
@@ -152,7 +152,7 @@ class AppEngineFirewallIngressRuleTest(BaseTest):
 
     def test_firewall_ingress_rule_query(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/{}'.format(project_id)
+        app_name = f'apps/{project_id}'
         rule_priority = 2147483647
         session_factory = self.replay_flight_data(
             'app-engine-firewall-ingress-rule-query', project_id=project_id)
@@ -169,9 +169,9 @@ class AppEngineFirewallIngressRuleTest(BaseTest):
 
     def test_firewall_ingress_rule_get(self):
         project_id = 'cloud-custodian'
-        app_name = 'apps/{}'.format(project_id)
+        app_name = f'apps/{project_id}'
         rule_priority = 2147483647
-        rule_priority_full = '{}/firewall/ingressRules/{}'.format(app_name, rule_priority)
+        rule_priority_full = f'{app_name}/firewall/ingressRules/{rule_priority}'
         session_factory = self.replay_flight_data(
             'app-engine-firewall-ingress-rule-get', project_id=project_id)
 

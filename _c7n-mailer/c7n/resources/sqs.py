@@ -78,7 +78,7 @@ class SQS(QueryResourceManager):
                 if e.response['Error']['Code'] == 'AWS.SimpleQueueService.NonExistentQueue':
                     return
                 if e.response['Error']['Code'] == 'AccessDenied':
-                    self.log.warning("Denied access to sqs %s" % r)
+                    self.log.warning(f"Denied access to sqs {r}")
                     return
                 raise
             return queue
@@ -275,7 +275,7 @@ class SetEncryption(BaseAction):
                 QueueUrl=queue['QueueUrl'],
                 Attributes={'KmsMasterKeyId': key_id}
             )
-        except (client.exceptions.QueueDoesNotExist,) as e:
+        except client.exceptions.QueueDoesNotExist as e:
             self.log.exception(
                 "Exception modifying queue:\n %s" % e)
 

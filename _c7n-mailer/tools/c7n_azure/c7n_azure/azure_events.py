@@ -135,10 +135,10 @@ class AzureEvents(object):
         for e in events:
             if isinstance(e, six.string_types):
                 event = cls.get(e)
-                event_operations.append('%s/%s' % (event['resource_provider'], event['event']))
+                event_operations.append(f"{event['resource_provider']}/{event['event']}")
 
             else:
-                event_operations.append('%s/%s' % (e['resourceProvider'], e['event']))
+                event_operations.append(f"{e['resourceProvider']}/{e['event']}")
 
         return event_operations
 
@@ -152,7 +152,7 @@ class AzureEventSubscription(object):
         event_filter = event_filter or EventSubscriptionFilter()
 
         event_info = EventSubscription(destination=destination, filter=event_filter)
-        scope = '/subscriptions/%s' % subscription_id
+        scope = f'/subscriptions/{subscription_id}'
 
         client = s.client('azure.mgmt.eventgrid.EventGridManagementClient')
         event_subscription = client.event_subscriptions.create_or_update(scope, name, event_info)

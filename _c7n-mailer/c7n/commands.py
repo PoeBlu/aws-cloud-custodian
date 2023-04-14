@@ -122,7 +122,7 @@ def policy_command(f):
         policies_by_region = defaultdict(list)
         for p in policies:
             policies_by_region[p.options.region].append(p)
-        for region in policies_by_region.keys():
+        for region in policies_by_region:
             counts = Counter([p.name for p in policies_by_region[region]])
             for policy, count in six.iteritems(counts):
                 if count > 1:
@@ -145,7 +145,7 @@ def _load_vars(options):
         try:
             vars = load_file(options.vars)
         except IOError as e:
-            log.error('Problem loading vars file "{}": {}'.format(options.vars, e.strerror))
+            log.error(f'Problem loading vars file "{options.vars}": {e.strerror}')
             sys.exit(1)
 
     # TODO - provide builtin vars here (such as account)
@@ -159,13 +159,13 @@ def _print_no_policies_warning(options, policies):
 
         log.warning("Filters:")
         if options.policy_filter:
-            log.warning("    Policy name filter (-p): " + options.policy_filter)
+            log.warning(f"    Policy name filter (-p): {options.policy_filter}")
         if options.resource_type:
-            log.warning("    Resource type filter (-t): " + options.resource_type)
+            log.warning(f"    Resource type filter (-t): {options.resource_type}")
 
         log.warning("Available policies:")
         for policy in policies:
-            log.warning("    - {} ({})".format(policy.name, policy.resource_type))
+            log.warning(f"    - {policy.name} ({policy.resource_type})")
         if not policies:
             log.warning("    (none)")
     else:
@@ -176,9 +176,12 @@ class DuplicateKeyCheckLoader(SafeLoader):
 
     def construct_mapping(self, node, deep=False):
         if not isinstance(node, yaml.MappingNode):
-            raise ConstructorError(None, None,
-                    "expected a mapping node, but found %s" % node.id,
-                    node.start_mark)
+            raise ConstructorError(
+                None,
+                None,
+                f"expected a mapping node, but found {node.id}",
+                node.start_mark,
+            )
         key_set = set()
         for key_node, value_node in node.value:
             if not isinstance(key_node, yaml.ScalarNode):
@@ -222,13 +225,12 @@ def validate(options):
         errors += schema.validate(data, schm)
         conf_policy_names = {
             p.get('name', 'unknown') for p in data.get('policies', ())}
-        dupes = conf_policy_names.intersection(used_policy_names)
-        if len(dupes) >= 1:
-            errors.append(ValueError(
-                "Only one policy with a given name allowed, duplicates: %s" % (
-                    ", ".join(dupes)
+        if dupes := conf_policy_names.intersection(used_policy_names):
+            errors.append(
+                ValueError(
+                    f'Only one policy with a given name allowed, duplicates: {", ".join(dupes)}'
                 )
-            ))
+            )
         used_policy_names = used_policy_names.union(conf_policy_names)
         if not errors:
             null_config = Config.empty(dryrun=True, account_id='na', region='na')
@@ -237,16 +239,15 @@ def validate(options):
                     policy = Policy(p, null_config, Bag())
                     policy.validate()
                 except Exception as e:
-                    msg = "Policy: %s is invalid: %s" % (
-                        p.get('name', 'unknown'), e)
+                    msg = f"Policy: {p.get('name', 'unknown')} is invalid: {e}"
                     errors.append(msg)
         if not errors:
-            log.info("Configuration valid: {}".format(config_file))
+            log.info(f"Configuration valid: {config_file}")
             continue
 
-        log.error("Configuration invalid: {}".format(config_file))
+        log.error(f"Configuration invalid: {config_file}")
         for e in errors:
-            log.error("%s" % e)
+            log.error(f"{e}")
     if errors:
         sys.exit(1)
 
@@ -271,9 +272,7 @@ def run(options, policies):
             exit_code = 2
             if options.debug:
                 raise
-            log.exception(
-                "Error while executing policy %s, continuing" % (
-                    policy.name))
+            log.exception(f"Error while executing policy {policy.name}, continuing")
     if exit_code != 0:
         sys.exit(exit_code)
 
@@ -285,7 +284,7 @@ def report(options, policies):
         log.error('Error: must supply at least one policy')
         sys.exit(1)
 
-    resources = set([p.resource_type for p in policies])
+    resources = {p.resource_type for p in policies}
     if len(resources) > 1:
         log.error('Error: Report subcommand can accept multiple policies, '
                   'but they must all be for the same resource.')
@@ -341,14 +340,14 @@ def schema_completer(prefix):
     else:
         cloud_provider = 'aws'
         provider_resources = provider.resources('aws')
-        components[0] = "aws.%s" % components[0]
+        components[0] = f"aws.{components[0]}"
 
     # Completions for resource
     if len(components) == 1:
         choices = [r for r in provider.resources().keys()
                    if r.startswith(components[0])]
         if len(choices) == 1:
-            choices += ['{}{}'.format(choices[0], '.')]
+            choices += [f'{choices[0]}.']
         return choices
 
     if components[0] not in provider_resources.keys():
@@ -356,17 +355,21 @@ def schema_completer(prefix):
 
     # Completions for category
     if len(components) == 2:
-        choices = ['{}.{}'.format(components[0], x)
-                   for x in ('actions', 'filters') if x.startswith(components[1])]
+        choices = [
+            f'{components[0]}.{x}'
+            for x in ('actions', 'filters')
+            if x.startswith(components[1])
+        ]
         if len(choices) == 1:
-            choices += ['{}{}'.format(choices[0], '.')]
+            choices += [f'{choices[0]}.']
         return choices
 
-    # Completions for item
     elif len(components) == 3:
         resource_mapping = schema.resource_vocabulary(cloud_provider)
-        return ['{}.{}.{}'.format(components[0], components[1], x)
-                for x in resource_mapping[components[0]][components[1]]]
+        return [
+            f'{components[0]}.{components[1]}.{x}'
+            for x in resource_mapping[components[0]][components[1]]
+        ]
 
     return []
 
@@ -420,12 +423,12 @@ def schema_cmd(options):
         cloud_provider = components.pop(0)
         resource_mapping = schema.resource_vocabulary(
             cloud_provider)
-        components[0] = '%s.%s' % (cloud_provider, components[0])
+        components[0] = f'{cloud_provider}.{components[0]}'
     elif components[0] in schema.resource_vocabulary().keys():
         resource_mapping = schema.resource_vocabulary()
     else:
         resource_mapping = schema.resource_vocabulary('aws')
-        components[0] = 'aws.%s' % components[0]
+        components[0] = f'aws.{components[0]}'
 
     #
     # Handle mode
@@ -438,22 +441,23 @@ def schema_cmd(options):
 
         if len(components) == 2:
             if components[1] not in resource_mapping[components[0]]:
-                log.error('{} is not a valid mode'.format(components[1]))
+                log.error(f'{components[1]} is not a valid mode')
                 sys.exit(1)
 
             _print_cls_schema(resource_mapping[components[0]][components[1]])
             return
 
         # We received too much (e.g. mode.actions.foo)
-        log.error("Invalid selector '{}'. Valid options are 'mode' "
-                  "or 'mode.TYPE'".format(options.resource))
+        log.error(
+            f"Invalid selector '{options.resource}'. Valid options are 'mode' or 'mode.TYPE'"
+        )
         sys.exit(1)
     #
     # Handle resource
     #
     resource = components[0]
     if resource not in resource_mapping:
-        log.error('{} is not a valid resource'.format(resource))
+        log.error(f'{resource} is not a valid resource')
         sys.exit(1)
 
     if len(components) == 1:
@@ -472,11 +476,13 @@ def schema_cmd(options):
     #
     category = components[1]
     if category not in ('actions', 'filters'):
-        log.error("Valid choices are 'actions' and 'filters'. You supplied '{}'".format(category))
+        log.error(
+            f"Valid choices are 'actions' and 'filters'. You supplied '{category}'"
+        )
         sys.exit(1)
 
     if len(components) == 2:
-        output = "No {} available for resource {}.".format(category, resource)
+        output = f"No {category} available for resource {resource}."
         if category in resource_mapping[resource]:
             output = {resource: {
                 category: resource_mapping[resource][category]}}
@@ -488,7 +494,7 @@ def schema_cmd(options):
     #
     item = components[2]
     if item not in resource_mapping[resource][category]:
-        log.error('{} is not in the {} list for resource {}'.format(item, category, resource))
+        log.error(f'{item} is not in the {category} list for resource {resource}')
         sys.exit(1)
 
     if len(components) == 3:
@@ -498,8 +504,9 @@ def schema_cmd(options):
         return
 
     # We received too much (e.g. s3.actions.foo.bar)
-    log.error("Invalid selector '{}'.  Max of 3 components in the "
-              "format RESOURCE.CATEGORY.ITEM".format(options.resource))
+    log.error(
+        f"Invalid selector '{options.resource}'.  Max of 3 components in the format RESOURCE.CATEGORY.ITEM"
+    )
     sys.exit(1)
 
 
@@ -576,6 +583,6 @@ def version_cmd(options):
     print("Using venv: ", hasattr(sys, 'real_prefix'))
 
     in_container = os.path.exists('/.dockerenv')
-    print("Docker: %s" % str(bool(in_container)))
+    print(f"Docker: {bool(in_container)}")
     print("PYTHONPATH: ")
     pp.pprint(sys.path)

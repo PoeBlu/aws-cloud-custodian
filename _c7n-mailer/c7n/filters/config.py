@@ -118,7 +118,7 @@ class ConfigCompliance(Filter):
         return results
 
     @classmethod
-    def register_resources(klass, registry, resource_class):
+    def register_resources(cls, registry, resource_class):
         """model resource subscriber on resource registration.
 
         Watch for new resource types being registered if they support aws config,
@@ -128,7 +128,7 @@ class ConfigCompliance(Filter):
         config_type = getattr(resource_class.resource_type, 'config_type', None)
         if config_type is None:
             return
-        resource_class.filter_registry.register('config-compliance', klass)
+        resource_class.filter_registry.register('config-compliance', cls)
 
 
 resources.subscribe(resources.EVENT_REGISTER, ConfigCompliance.register_resources)

@@ -50,9 +50,7 @@ class ResourceIdParser(object):
     def get_resource_group(resource_id):
         result = parse_resource_id(resource_id).get("resource_group")
         # parse_resource_id fails to parse resource id for resource groups
-        if result is None:
-            return resource_id.split('/')[4]
-        return result
+        return resource_id.split('/')[4] if result is None else result
 
     @staticmethod
     def get_resource_type(resource_id):
@@ -129,26 +127,24 @@ def custodian_azure_send_override(self, request, headers=None, content=None, **k
         send_logger.debug(response.status_code)
         for k, v in response.headers.items():
             if k.startswith('x-ms-ratelimit'):
-                send_logger.debug(k + ':' + v)
+                send_logger.debug(f'{k}:{v}')
 
-        # Retry codes from urllib3/util/retry.py
-        if response.status_code in [413, 429, 503]:
-            retry_after = None
-            for k in response.headers.keys():
-                if StringUtils.equal('retry-after', k):
-                    retry_after = int(response.headers[k])
+        if response.status_code not in [413, 429, 503]:
+            break
+        retry_after = None
+        for k in response.headers.keys():
+            if StringUtils.equal('retry-after', k):
+                retry_after = int(response.headers[k])
 
-            if retry_after is not None and retry_after < constants.DEFAULT_MAX_RETRY_AFTER:
-                send_logger.warning('Received retriable error code %i. Retry-After: %i'
-                                    % (response.status_code, retry_after))
-                time.sleep(retry_after)
-                retries += 1
-            else:
-                send_logger.error("Received throttling error, retry time is %i"
-                                  "(retry only if < %i seconds)."
-                                  % (retry_after or 0, constants.DEFAULT_MAX_RETRY_AFTER))
-                break
+        if retry_after is not None and retry_after < constants.DEFAULT_MAX_RETRY_AFTER:
+            send_logger.warning('Received retriable error code %i. Retry-After: %i'
+                                % (response.status_code, retry_after))
+            time.sleep(retry_after)
+            retries += 1
         else:
+            send_logger.error("Received throttling error, retry time is %i"
+                              "(retry only if < %i seconds)."
+                              % (retry_after or 0, constants.DEFAULT_MAX_RETRY_AFTER))
             break
     return response
 
@@ -162,31 +158,28 @@ class ThreadHelper:
                             max_workers=constants.DEFAULT_MAX_THREAD_WORKERS,
                             chunk_size=constants.DEFAULT_CHUNK_SIZE,
                             **kwargs):
-        futures = []
         results = []
         exceptions = []
 
         if ThreadHelper.disable_multi_threading:
             try:
-                result = execution_method(resources, event, **kwargs)
-                if result:
+                if result := execution_method(resources, event, **kwargs):
                     results.extend(result)
             except Exception as e:
                 exceptions.append(e)
         else:
+            futures = []
             with executor_factory(max_workers=max_workers) as w:
-                for resource_set in chunks(resources, chunk_size):
-                    futures.append(w.submit(execution_method, resource_set, event, **kwargs))
-
+                futures.extend(
+                    w.submit(execution_method, resource_set, event, **kwargs)
+                    for resource_set in chunks(resources, chunk_size)
+                )
                 for f in as_completed(futures):
                     if f.exception():
-                        log.error(
-                            "Execution failed with error: %s" % f.exception())
+                        log.error(f"Execution failed with error: {f.exception()}")
                         exceptions.append(f.exception())
-                    else:
-                        result = f.result()
-                        if result:
-                            results.extend(result)
+                    elif result := f.result():
+                        results.extend(result)
 
         return results, list(set(exceptions))
 
@@ -304,7 +297,7 @@ class PortsRangeHelper(object):
         """ Converts array of port ranges to the set of integers
             Example: [(10-12), (20,20)] -> {10, 11, 12, 20}
         """
-        return set([i for r in ranges for i in range(r.start, r.end + 1)])
+        return {i for r in ranges for i in range(r.start, r.end + 1)}
 
     @staticmethod
     def validate_ports_string(ports):
@@ -317,10 +310,9 @@ class PortsRangeHelper(object):
             return False
 
         ranges = PortsRangeHelper._get_string_port_ranges(ports)
-        for r in ranges:
-            if r.start > r.end or r.start > 65535 or r.end > 65535:
-                return False
-        return True
+        return not any(
+            r.start > r.end or r.start > 65535 or r.end > 65535 for r in ranges
+        )
 
     @staticmethod
     def get_ports_set_from_string(ports):
@@ -356,8 +348,10 @@ class PortsRangeHelper(object):
 
         # Update tuples with strings, representing ranges
         result.append(PortsRangeHelper.PortsRange(start=data[first], end=data[-1]))
-        result = [str(x.start) if x.start == x.end else "%i-%i" % (x.start, x.end) for x in result]
-        return result
+        return [
+            str(x.start) if x.start == x.end else "%i-%i" % (x.start, x.end)
+            for x in result
+        ]
 
     @staticmethod
     def build_ports_dict(nsg, direction_key, ip_protocol):
@@ -425,7 +419,7 @@ class AppInsightsHelper(object):
         except ValueError:
             values = data.split('/')
             if len(values) != 2:
-                AppInsightsHelper.log.warning("Bad format: '%s'" % url)
+                AppInsightsHelper.log.warning(f"Bad format: '{url}'")
             return AppInsightsHelper._get_instrumentation_key(values[0], values[1])
         return data
 
@@ -482,8 +476,7 @@ class RetentionPeriod(object):
 
     @staticmethod
     def iso8601_duration(period, retention_period_unit):
-        iso8601_str = "P{}{}".format(period, retention_period_unit.iso8601_symbol)
-        return iso8601_str
+        return f"P{period}{retention_period_unit.iso8601_symbol}"
 
     @staticmethod
     def parse_iso8601_retention_period(iso8601_retention_period):
@@ -492,11 +485,11 @@ class RetentionPeriod(object):
         """
         match = re.match(RetentionPeriod.PATTERN, iso8601_retention_period)
         if match is None:
-            raise ValueError("Invalid iso8601_retention_period: {}. "
-            "This parser only accepts a single duration designator."
-            .format(iso8601_retention_period))
-        period = int(match.group(1))
-        iso8601_symbol = match.group(2)
+            raise ValueError(
+                f"Invalid iso8601_retention_period: {iso8601_retention_period}. This parser only accepts a single duration designator."
+            )
+        period = int(match[1])
+        iso8601_symbol = match[2]
         units = next(units for units in RetentionPeriod.Units
             if units.iso8601_symbol == iso8601_symbol)
         return period, units

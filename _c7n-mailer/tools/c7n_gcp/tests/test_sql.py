@@ -81,7 +81,7 @@ class SqlInstanceTest(BaseTest):
             result = client.execute_query(
                 'get', {'project': project_id,
                         'instance': instance_name})
-            self.fail('found deleted instance: %s' % result)
+            self.fail(f'found deleted instance: {result}')
         except HttpError as e:
             self.assertTrue("does not exist" in str(e))
 
@@ -98,15 +98,20 @@ class SqlUserTest(BaseTest):
 
         filter_annotation_key = 'c7n:sql-instance'
         policy = self.load_policy(
-            {'name': 'gcp-sql-user-dryrun',
-             'resource': 'gcp.sql-user',
-             'filters': [{
-                     'type': 'value',
-                     'key': '\"{}\".name'.format(filter_annotation_key),
-                     'op': 'regex',
-                     'value': instance_name}]
-             },
-            session_factory=session_factory)
+            {
+                'name': 'gcp-sql-user-dryrun',
+                'resource': 'gcp.sql-user',
+                'filters': [
+                    {
+                        'type': 'value',
+                        'key': f'\"{filter_annotation_key}\".name',
+                        'op': 'regex',
+                        'value': instance_name,
+                    }
+                ],
+            },
+            session_factory=session_factory,
+        )
         annotation_key = policy.resource_manager.resource_type.get_parent_annotation_key()
         # If fails there, policies using filters for the resource
         # need to be updated since the key has been changed.

@@ -172,9 +172,7 @@ class CloudTrailEnabled(Filter):
                         'LatestDeliveryError'):
                     running.append(t)
             trails = running
-        if trails:
-            return []
-        return resources
+        return [] if trails else resources
 
 
 @filters.register('guard-duty')
@@ -218,10 +216,11 @@ class GuardDutyEnabled(MultiAttrFilter):
         'guardduty:GetDetector')
 
     def validate(self):
-        attrs = set()
-        for k in self.data:
-            if k.startswith('Detector') or k.startswith('Master'):
-                attrs.add(k)
+        attrs = {
+            k
+            for k in self.data
+            if k.startswith('Detector') or k.startswith('Master')
+        }
         self.multi_attrs = attrs
         return super(GuardDutyEnabled, self).validate()
 
@@ -230,14 +229,11 @@ class GuardDutyEnabled(MultiAttrFilter):
             return resource[self.annotation]
 
         client = local_session(self.manager.session_factory).client('guardduty')
-        # detectors are singletons too.
-        detector_ids = client.list_detectors().get('DetectorIds')
-
-        if not detector_ids:
-            return None
-        else:
+        if detector_ids := client.list_detectors().get('DetectorIds'):
             detector_id = detector_ids.pop()
 
+        else:
+            return None
         detector = client.get_detector(DetectorId=detector_id)
         detector.pop('ResponseMetadata', None)
         master = client.get_master_account(DetectorId=detector_id).get('Master')
@@ -297,9 +293,7 @@ class ConfigEnabled(Filter):
             resources[0]['c7n:config_status'] = status
             recorders = [r for r in recorders if status[r['name']]['recording'] and
                 status[r['name']]['lastStatus'].lower() in ('pending', 'success')]
-        if channels and recorders:
-            return []
-        return resources
+        return [] if channels and recorders else resources
 
 
 @filters.register('iam-summary')
@@ -370,9 +364,7 @@ class IAMSummary(ValueFilter):
                 self.manager.session_factory).client('iam')
             resources[0]['c7n:iam_summary'] = client.get_account_summary(
             )['SummaryMap']
-        if self.match(resources[0]['c7n:iam_summary']):
-            return resources
-        return []
+        return resources if self.match(resources[0]['c7n:iam_summary']) else []
 
 
 @filters.register('password-policy')
@@ -418,9 +410,7 @@ class AccountPasswordPolicy(ValueFilter):
                 else:
                     raise
             account['c7n:password_policy'] = policy
-        if self.match(account['c7n:password_policy']):
-            return resources
-        return []
+        return resources if self.match(account['c7n:password_policy']) else []
 
 
 @filters.register('service-limit')
@@ -508,11 +498,13 @@ class ServiceLimit(Filter):
 
     def validate(self):
         region = self.manager.data.get('region', '')
-        if len(self.global_services.intersection(self.data.get('services', []))):
-            if region != 'us-east-1':
-                raise PolicyValidationError(
-                    "Global services: %s must be targeted in us-east-1 on the policy"
-                    % ', '.join(self.global_services))
+        if (
+            len(self.global_services.intersection(self.data.get('services', [])))
+            and region != 'us-east-1'
+        ):
+            raise PolicyValidationError(
+                f"Global services: {', '.join(self.global_services)} must be targeted in us-east-1 on the policy"
+            )
         return self
 
     @classmethod
@@ -790,8 +782,10 @@ class EnableTrail(BaseAction):
                 CreateBucketConfiguration={'LocationConstraint': bucket_region}
             )
         except ClientError as ce:
-            if not ('Error' in ce.response and
-            ce.response['Error']['Code'] == 'BucketAlreadyOwnedByYou'):
+            if (
+                'Error' not in ce.response
+                or ce.response['Error']['Code'] != 'BucketAlreadyOwnedByYou'
+            ):
                 raise ce
 
         try:
@@ -806,13 +800,11 @@ class EnableTrail(BaseAction):
         s3client.put_bucket_policy(Bucket=bucket_name, Policy=policy_json)
         trails = client.describe_trails().get('trailList', ())
         if trail_name not in [t.get('Name') for t in trails]:
-            new_trail = client.create_trail(
+            if new_trail := client.create_trail(
                 Name=trail_name,
                 S3BucketName=bucket_name,
-            )
-            if new_trail:
+            ):
                 trails.append(new_trail)
-                # the loop below will configure the new trail
         for trail in trails:
             if trail.get('Name') != trail_name:
                 continue
@@ -934,11 +926,13 @@ class EnableDataEvents(BaseAction):
                         'type': 'string'}}}})
 
     def validate(self):
-        if self.data['data-trail'].get('create'):
-            if 's3-bucket' not in self.data['data-trail']:
-                raise PolicyValidationError(
-                    "If creating data trails, an s3-bucket is required on %s" % (
-                        self.manager.data))
+        if (
+            self.data['data-trail'].get('create')
+            and 's3-bucket' not in self.data['data-trail']
+        ):
+            raise PolicyValidationError(
+                f"If creating data trails, an s3-bucket is required on {self.manager.data}"
+            )
         return self
 
     def get_permissions(self):
@@ -975,23 +969,21 @@ class EnableDataEvents(BaseAction):
 
     def process(self, resources):
         session = local_session(self.manager.session_factory)
-        region = self.data['data-trail'].get('multi-region')
-
-        if region:
+        if region := self.data['data-trail'].get('multi-region'):
             client = session.client('cloudtrail', region_name=region)
         else:
             client = session.client('cloudtrail')
 
         added = False
         tconfig = self.data['data-trail']
-        trails = client.describe_trails(
-            trailNameList=[tconfig['name']]).get('trailList', ())
-        if not trails:
-            trail = self.add_data_trail(client, tconfig)
-            added = True
-        else:
+        if trails := client.describe_trails(trailNameList=[tconfig['name']]).get(
+            'trailList', ()
+        ):
             trail = trails[0]
 
+        else:
+            trail = self.add_data_trail(client, tconfig)
+            added = True
         events = client.get_event_selectors(
             TrailName=trail['Name']).get('EventSelectors', [])
 
@@ -1056,9 +1048,7 @@ class ShieldEnabled(Filter):
             subscription = None
 
         resources[0]['c7n:ShieldSubscription'] = subscription
-        if state and subscription:
-            return resources
-        elif not state and not subscription:
+        if state and subscription or not state and not subscription:
             return resources
         return []
 
@@ -1076,9 +1066,7 @@ class SetShieldAdvanced(BaseAction):
 
     def process(self, resources):
         client = local_session(self.manager.session_factory).client('shield')
-        state = self.data.get('state', True)
-
-        if state:
+        if state := self.data.get('state', True):
             client.create_subscription()
         else:
             try:
@@ -1131,11 +1119,10 @@ class XrayEncrypted(Filter):
         if k not in ['default', 'kms']:
             kmsclient = self.manager.session_factory().client('kms')
             keyid = kmsclient.describe_key(KeyId=k)['KeyMetadata']['Arn']
-            rc = resources if (gec_result['KeyId'] == keyid) else []
+            return resources if (gec_result['KeyId'] == keyid) else []
         else:
             kv = 'KMS' if self.data.get('key') == 'kms' else 'NONE'
-            rc = resources if (gec_result['Type'] == kv) else []
-        return rc
+            return resources if (gec_result['Type'] == kv) else []
 
 
 @actions.register('set-xray-encrypt')

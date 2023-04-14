@@ -63,9 +63,10 @@ class IsShadow(Filter):
     def is_shadow(self, t):
         if t.get('IsOrganizationTrail') and self.manager.config.account_id not in t['TrailARN']:
             return True
-        if t.get('IsMultiRegionTrail') and t['HomeRegion'] != self.manager.config.region:
-            return True
-        return False
+        return bool(
+            t.get('IsMultiRegionTrail')
+            and t['HomeRegion'] != self.manager.config.region
+        )
 
 
 @CloudTrail.filter_registry.register('status')

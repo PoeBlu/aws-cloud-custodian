@@ -49,8 +49,7 @@ def run(event, context=None):
     # merge all our options in
     options = Config.empty(**options_overrides)
 
-    policies = PolicyCollection.from_data(policy_config, options)
-    if policies:
+    if policies := PolicyCollection.from_data(policy_config, options):
         for p in policies:
             log.info("running policy %s", p.name)
             p.push(event, context)
@@ -58,10 +57,10 @@ def run(event, context=None):
 
 
 def get_tmp_output_dir():
-    output_dir = '/tmp/' + str(uuid.uuid4())
+    output_dir = f'/tmp/{str(uuid.uuid4())}'
     if not os.path.exists(output_dir):
         try:
             os.mkdir(output_dir)
         except OSError as error:
-            log.warning("Unable to make output directory: {}".format(error))
+            log.warning(f"Unable to make output directory: {error}")
     return output_dir

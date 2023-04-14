@@ -58,7 +58,7 @@ def get_archive(config):
             continue
         for t in [f for f in os.listdir(d) if os.path.splitext(f)[1] == '.j2']:
             with open(os.path.join(d, t)) as fh:
-                archive.add_contents('msg-templates/%s' % t, fh.read())
+                archive.add_contents(f'msg-templates/{t}', fh.read())
 
     function_config = copy.deepcopy(config)
     function_config['templates_folders'] = ['msg-templates/']

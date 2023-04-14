@@ -27,8 +27,8 @@ class MultiAttrFilter(Filter):
             delta.remove('match-operator')
         if delta:
             raise PolicyValidationError(
-                "filter:{} unknown keys {} on {}".format(
-                    self.type, ", ".join(delta), self.manager.data))
+                f'filter:{self.type} unknown keys {", ".join(delta)} on {self.manager.data}'
+            )
 
     def process(self, resources, event=None):
         matched = []

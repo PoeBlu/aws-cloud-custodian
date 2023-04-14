@@ -99,10 +99,10 @@ class DeleteStack(BaseAction, StateTransitionFilter):
             instances = client.describe_instances(StackId=stack_id)['Instances']
             orig_length = len(instances)
             instances = self.filter_instance_state(instances)
-            if(len(instances) != orig_length):
+            if (len(instances) != orig_length):
                 self.log.exception(
-                    "All instances must be stopped before deletion. Stack Id: %s Name: %s." %
-                    (stack_id, stack['Name']))
+                    f"All instances must be stopped before deletion. Stack Id: {stack_id} Name: {stack['Name']}."
+                )
                 return
             for instance in instances:
                 instance_id = instance['InstanceId']

@@ -132,10 +132,9 @@ def _build_http(http=None):
         http = httplib2.Http(
             timeout=HTTP_REQUEST_TIMEOUT, ca_certs=HTTPLIB_CA_BUNDLE)
 
-    user_agent = 'Python-httplib2/{} (gzip), {}/{}'.format(
-        httplib2.__version__,
-        'custodian-gcp',
-        '0.1')
+    user_agent = (
+        f'Python-httplib2/{httplib2.__version__} (gzip), custodian-gcp/0.1'
+    )
     return set_user_agent(http, user_agent)
 
 
@@ -185,7 +184,7 @@ class Session(object):
         Returns:
             str: The object representation.
         """
-        return '<gcp-session: http=%s>' % (self._http,)
+        return f'<gcp-session: http={self._http}>'
 
     def get_default_project(self):
         if self.project_id:
@@ -283,14 +282,8 @@ class ServiceClient(object):
 
         self._entity_field = entity_field
         self._num_retries = num_retries
-        if list_key_field:
-            self._list_key_field = list_key_field
-        else:
-            self._list_key_field = key_field
-        if get_key_field:
-            self._get_key_field = get_key_field
-        else:
-            self._get_key_field = key_field
+        self._list_key_field = list_key_field if list_key_field else key_field
+        self._get_key_field = get_key_field if get_key_field else key_field
         self._max_results_field = max_results_field
         self._search_query_field = search_query_field
         self._rate_limiter = rate_limiter
@@ -308,11 +301,7 @@ class ServiceClient(object):
         """
         if self._use_cached_http and hasattr(self._local, 'http'):
             return self._local.http
-        if self._http_replay is not None:
-            # httplib2 instance is not thread safe
-            http = self._http_replay
-        else:
-            http = _build_http()
+        http = self._http_replay if self._http_replay is not None else _build_http()
         authorized_http = google_auth_httplib2.AuthorizedHttp(
             self._credentials, http=http)
         if self._use_cached_http:
@@ -321,9 +310,7 @@ class ServiceClient(object):
 
     def get_http(self):
         """Return an http instance sans credentials"""
-        if self._http_replay:
-            return self._http_replay
-        return _build_http()
+        return self._http_replay if self._http_replay else _build_http()
 
     def _build_request(self, verb, verb_arguments):
         """Builds HttpRequest object.
@@ -360,7 +347,7 @@ class ServiceClient(object):
             httplib2.HttpRequest: HttpRequest or None. None is returned when
                 there is nothing more to fetch - request completed.
         """
-        method = getattr(self._component, verb + '_next')
+        method = getattr(self._component, f'{verb}_next')
         return method(prior_request, prior_response)
 
     def supports_pagination(self, verb):
@@ -372,7 +359,7 @@ class ServiceClient(object):
         Returns:
             bool: True when API supports pagination, False otherwise.
         """
-        return getattr(self._component, verb + '_next', None)
+        return getattr(self._component, f'{verb}_next', None)
 
     def execute_command(self, verb, verb_arguments):
         """Executes command (ex. add) via a dedicated http object.
@@ -432,7 +419,7 @@ class ServiceClient(object):
         next_page_token = None
         number_of_pages_processed = 0
         while True:
-            req_body = verb_arguments.get('body', dict())
+            req_body = verb_arguments.get('body', {})
             if next_page_token:
                 req_body['pageToken'] = next_page_token
             request = self._build_request(verb, verb_arguments)

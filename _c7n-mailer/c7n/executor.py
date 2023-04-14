@@ -36,7 +36,7 @@ def executor(name, **kw):
     # post element refactoring
     # factory.validate(kw)
     if factory is None:
-        raise ValueError("No Such Executor %s" % name)
+        raise ValueError(f"No Such Executor {name}")
     return factory(**kw)
 
 

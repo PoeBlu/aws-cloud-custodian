@@ -75,6 +75,4 @@ class Missing(Filter):
             p.expand_variables(p.get_variables())
             p.validate()
             found[p.options.region] = p.poll()
-        if not all(found.values()):
-            return resources
-        return []
+        return [] if all(found.values()) else resources

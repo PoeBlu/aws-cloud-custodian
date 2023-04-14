@@ -16,6 +16,7 @@ Azure Queue Message Processing
 ==============================
 
 """
+
 import base64
 import json
 import traceback
@@ -31,7 +32,6 @@ try:
 except ImportError:
     StorageUtilities = None
     Session = None
-    pass
 
 
 class MailerAzureQueueProcessor(object):
@@ -59,7 +59,7 @@ class MailerAzureQueueProcessor(object):
 
         while len(queue_messages) > 0:
             for queue_message in queue_messages:
-                self.logger.debug("Message id: %s received" % queue_message.id)
+                self.logger.debug(f"Message id: {queue_message.id} received")
 
                 if (self.process_azure_queue_message(queue_message) or
                         queue_message.dequeue_count > self.max_message_retry):
@@ -94,8 +94,6 @@ class MailerAzureQueueProcessor(object):
                 slack_delivery.slack_handler(queue_message, slack_messages)
             except Exception:
                 traceback.print_exc()
-                pass
-
         # this section gets the map of metrics to send to datadog and delivers it
         if any(e.startswith('datadog') for e in queue_message.get('action', ()).get('to')):
             from c7n_mailer.datadog_delivery import DataDogDelivery
@@ -106,21 +104,18 @@ class MailerAzureQueueProcessor(object):
                 datadog_delivery.deliver_datadog_messages(datadog_message_packages, queue_message)
             except Exception:
                 traceback.print_exc()
-                pass
-
         # this section sends a notification to the resource owner via SendGrid
         try:
             sendgrid_delivery = SendGridDelivery(self.config, self.logger)
             email_messages = sendgrid_delivery.get_to_addrs_sendgrid_messages_map(queue_message)
 
-            if 'smtp_server' in self.config:
-                smtp_delivery = SmtpDelivery(config=self.config,
-                                             session=self.session,
-                                             logger=self.logger)
-                for to_addrs, message in six.iteritems(email_messages):
-                    smtp_delivery.send_message(message=message, to_addrs=list(to_addrs))
-            else:
+            if 'smtp_server' not in self.config:
                 return sendgrid_delivery.sendgrid_handler(queue_message, email_messages)
+            smtp_delivery = SmtpDelivery(config=self.config,
+                                         session=self.session,
+                                         logger=self.logger)
+            for to_addrs, message in six.iteritems(email_messages):
+                smtp_delivery.send_message(message=message, to_addrs=list(to_addrs))
         except Exception:
             traceback.print_exc()
 

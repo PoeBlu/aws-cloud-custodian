@@ -205,12 +205,11 @@ class SnapshotElastiCacheCluster(BaseAction):
                 set_size, len(clusters))
 
         with self.executor_factory(max_workers=2) as w:
-            futures = []
             client = local_session(self.manager.session_factory).client('elasticache')
-            for cluster in clusters:
-                futures.append(
-                    w.submit(self.process_cluster_snapshot, client, cluster))
-
+            futures = [
+                w.submit(self.process_cluster_snapshot, client, cluster)
+                for cluster in clusters
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
@@ -238,20 +237,16 @@ class ElasticacheClusterModifyVpcSecurityGroups(ModifyVpcSecurityGroupsAction):
     permissions = ('elasticache:ModifyReplicationGroup',)
 
     def process(self, clusters):
-        replication_group_map = {}
         client = local_session(
             self.manager.session_factory).client('elasticache')
         groups = super(
             ElasticacheClusterModifyVpcSecurityGroups, self).get_groups(
                 clusters)
-        for idx, c in enumerate(clusters):
-            # build map of Replication Groups to Security Groups
-            replication_group_map[c['ReplicationGroupId']] = groups[idx]
-
-        for idx, r in enumerate(replication_group_map.keys()):
-            client.modify_replication_group(
-                ReplicationGroupId=r,
-                SecurityGroupIds=replication_group_map[r])
+        replication_group_map = {
+            c['ReplicationGroupId']: groups[idx] for idx, c in enumerate(clusters)
+        }
+        for r, value in replication_group_map.items():
+            client.modify_replication_group(ReplicationGroupId=r, SecurityGroupIds=value)
 
 
 @resources.register('cache-subnet-group')
@@ -321,8 +316,10 @@ class ElastiCacheSnapshotAge(AgeFilter):
             return v
 
         # Return the earliest of the node snaphot creation times.
-        return min([to_datetime(ns['SnapshotCreateTime'])
-                    for ns in snapshot['NodeSnapshots']])
+        return min(
+            to_datetime(ns['SnapshotCreateTime'])
+            for ns in snapshot['NodeSnapshots']
+        )
 
 
 @ElastiCacheSnapshot.action_registry.register('delete')

@@ -65,12 +65,13 @@ def process_log_event(event, context):
     message = [
         "An error was detected",
         "",
-        "Log Group: %s" % data['logGroup'],
-        "Log Stream: %s" % data['logStream'],
-        "Log Owner: %s" % data['owner'],
+        f"Log Group: {data['logGroup']}",
+        f"Log Stream: {data['logStream']}",
+        f"Log Owner: {data['owner']}",
         "",
         "Log Contents",
-        ""]
+        "",
+    ]
 
     # We may get things delivered from log sub that are not in log events
     for evt in data['logEvents']:
@@ -78,9 +79,7 @@ def process_log_event(event, context):
             events.append(evt)
 
     for evt in events:
-        message.append(message_event(evt))
-        message.append("")
-
+        message.extend((message_event(evt), ""))
     params = dict(
         TopicArn=config['topic'],
         Subject=config['subject'],

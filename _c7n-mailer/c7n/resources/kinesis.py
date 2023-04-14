@@ -59,7 +59,7 @@ class Encrypt(Action):
             'kms').describe_key(KeyId=key)['KeyMetadata']['KeyId']
         client = local_session(self.manager.session_factory).client('kinesis')
         for r in resources:
-            if not r['StreamStatus'] == 'ACTIVE':
+            if r['StreamStatus'] != 'ACTIVE':
                 continue
             client.start_stream_encryption(
                 StreamName=r['StreamName'],
@@ -79,10 +79,10 @@ class Delete(Action):
         not_active = [r['StreamName'] for r in resources
                       if r['StreamStatus'] != 'ACTIVE']
         self.log.warning(
-            "The following streams cannot be deleted (wrong state): %s" % (
-                ", ".join(not_active)))
+            f'The following streams cannot be deleted (wrong state): {", ".join(not_active)}'
+        )
         for r in resources:
-            if not r['StreamStatus'] == 'ACTIVE':
+            if r['StreamStatus'] != 'ACTIVE':
                 continue
             client.delete_stream(
                 StreamName=r['StreamName'])
@@ -111,14 +111,16 @@ class FirehoseDelete(Action):
 
     def process(self, resources):
         client = local_session(self.manager.session_factory).client('firehose')
-        creating = [r['DeliveryStreamName'] for r in resources
-                    if r['DeliveryStreamStatus'] == 'CREATING']
-        if creating:
+        if creating := [
+            r['DeliveryStreamName']
+            for r in resources
+            if r['DeliveryStreamStatus'] == 'CREATING'
+        ]:
             self.log.warning(
-                "These delivery streams can't be deleted (wrong state): %s" % (
-                    ", ".join(creating)))
+                f"""These delivery streams can't be deleted (wrong state): {", ".join(creating)}"""
+            )
         for r in resources:
-            if not r['DeliveryStreamStatus'] == 'ACTIVE':
+            if r['DeliveryStreamStatus'] != 'ACTIVE':
                 continue
             client.delete_delivery_stream(
                 DeliveryStreamName=r['DeliveryStreamName'])
@@ -178,7 +180,7 @@ class FirehoseEncryptS3Destination(Action):
         client = local_session(self.manager.session_factory).client('firehose')
         key = self.data.get('key_arn')
         for r in resources:
-            if not r['DeliveryStreamStatus'] == 'ACTIVE':
+            if r['DeliveryStreamStatus'] != 'ACTIVE':
                 continue
             version = r['VersionId']
             name = r['DeliveryStreamName']

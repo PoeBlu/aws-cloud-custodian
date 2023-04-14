@@ -64,7 +64,7 @@ def resources(cloud_provider=None):
         if cloud_provider and cname != cloud_provider:
             continue
         for rname, rtype in ctype.resources.items():
-            results['%s.%s' % (cname, rname)] = rtype
+            results[f'{cname}.{rname}'] = rtype
     return results
 
 
@@ -76,11 +76,9 @@ def get_resource_class(resource_type):
 
     provider = clouds.get(provider_name)
     if provider is None:
-        raise KeyError(
-            "Invalid cloud provider: %s" % provider_name)
+        raise KeyError(f"Invalid cloud provider: {provider_name}")
 
     factory = provider.resources.get(resource)
     if factory is None:
-        raise KeyError("Invalid resource: %s for provider: %s" % (
-            resource, provider_name))
+        raise KeyError(f"Invalid resource: {resource} for provider: {provider_name}")
     return factory

@@ -50,27 +50,24 @@ class ResourceQuery(object):
             else:
                 params['project'] = project
 
-        if m.scope == 'zone':
-            if session.get_default_zone():
-                params['zone'] = session.get_default_zone()
+        if m.scope == 'zone' and session.get_default_zone():
+            params['zone'] = session.get_default_zone()
 
         enum_op, path, extra_args = m.enum_spec
         if extra_args:
-            params.update(extra_args)
+            params |= extra_args
         return self._invoke_client_enum(
             client, enum_op, params, path)
 
     def _invoke_client_enum(self, client, enum_op, params, path):
-        if client.supports_pagination(enum_op):
-            results = []
-            for page in client.execute_paged_query(enum_op, params):
-                page_items = jmespath.search(path, page)
-                if page_items:
-                    results.extend(page_items)
-            return results
-        else:
+        if not client.supports_pagination(enum_op):
             return jmespath.search(path,
                 client.execute_query(enum_op, verb_arguments=params))
+        results = []
+        for page in client.execute_paged_query(enum_op, params):
+            if page_items := jmespath.search(path, page):
+                results.extend(page_items)
+        return results
 
 
 @sources.register('describe-gcp')
@@ -96,11 +93,9 @@ class QueryMeta(type):
     """metaclass to have consistent action/filter registry for new resources."""
     def __new__(cls, name, parents, attrs):
         if 'filter_registry' not in attrs:
-            attrs['filter_registry'] = FilterRegistry(
-                '%s.filters' % name.lower())
+            attrs['filter_registry'] = FilterRegistry(f'{name.lower()}.filters')
         if 'action_registry' not in attrs:
-            attrs['action_registry'] = ActionRegistry(
-                '%s.actions' % name.lower())
+            attrs['action_registry'] = ActionRegistry(f'{name.lower()}.actions')
 
         return super(QueryMeta, cls).__new__(cls, name, parents, attrs)
 
@@ -217,22 +212,15 @@ class ChildResourceManager(QueryResourceManager):
 
     @staticmethod
     def _extract_fields(source, mappings):
-        result = {}
-
-        for mapping in mappings:
-            result[mapping[1]] = jmespath.search(mapping[0], source)
-
-        return result
+        return {
+            mapping[1]: jmespath.search(mapping[0], source) for mapping in mappings
+        }
 
 
 class TypeMeta(type):
 
-    def __repr__(cls):
-        return "<TypeInfo service:%s component:%s scope:%s version:%s>" % (
-            cls.service,
-            cls.component,
-            cls.scope,
-            cls.version)
+    def __repr__(self):
+        return f"<TypeInfo service:{self.service} component:{self.component} scope:{self.scope} version:{self.version}>"
 
 
 @six.add_metaclass(TypeMeta)
@@ -265,7 +253,7 @@ class ChildTypeInfo(TypeInfo):
     @classmethod
     def get_parent_annotation_key(cls):
         parent_resource = cls.parent_spec['resource']
-        return 'c7n:{}'.format(parent_resource)
+        return f'c7n:{parent_resource}'
 
 
 ERROR_REASON = jmespath.compile('error.errors[0].reason')

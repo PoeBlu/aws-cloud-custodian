@@ -32,17 +32,12 @@ class SendGridDelivery(object):
         # eg: { ('milton@initech.com', 'peter@initech.com'): [resource1, resource2, etc] }
         to_addrs_to_resources_map = self.get_email_to_addrs_to_resources_map(queue_message)
 
-        to_addrs_to_content_map = {}
-        for to_addrs, resources in six.iteritems(to_addrs_to_resources_map):
-            to_addrs_to_content_map[to_addrs] = get_mimetext_message(
-                self.config,
-                self.logger,
-                queue_message,
-                resources,
-                list(to_addrs)
+        return {
+            to_addrs: get_mimetext_message(
+                self.config, self.logger, queue_message, resources, list(to_addrs)
             )
-        # eg: { ('milton@initech.com', 'peter@initech.com'): message }
-        return to_addrs_to_content_map
+            for to_addrs, resources in six.iteritems(to_addrs_to_resources_map)
+        }
 
     # this function returns a dictionary with a tuple of emails as the key
     # and the list of resources as the value. This helps ensure minimal emails
@@ -64,31 +59,30 @@ class SendGridDelivery(object):
                 elif is_email(target):
                     resource_emails.append(target)
 
-            resource_emails = tuple(sorted(set(resource_emails)))
-
-            if resource_emails:
+            if resource_emails := tuple(sorted(set(resource_emails))):
                 email_to_addrs_to_resources_map.setdefault(resource_emails, []).append(resource)
 
-        if email_to_addrs_to_resources_map == {}:
+        if not email_to_addrs_to_resources_map:
             self.logger.debug('Found no email addresses, sending no emails.')
         # eg: { ('milton@initech.com', 'peter@initech.com'): [resource1, resource2, etc] }
         return email_to_addrs_to_resources_map
 
     def sendgrid_handler(self, queue_message, to_addrs_to_email_messages_map):
-        self.logger.info("Sending account:%s policy:%s %s:%s email:%s to %s" % (
-            queue_message.get('account', ''),
-            queue_message['policy']['name'],
-            queue_message['policy']['resource'],
-            str(len(queue_message['resources'])),
-            queue_message['action'].get('template', 'default'),
-            to_addrs_to_email_messages_map))
+        self.logger.info(
+            f"Sending account:{queue_message.get('account', '')} policy:{queue_message['policy']['name']} {queue_message['policy']['resource']}:{len(queue_message['resources'])} email:{queue_message['action'].get('template', 'default')} to {to_addrs_to_email_messages_map}"
+        )
 
         from_address = self.config.get('from_address', '')
         subject = get_message_subject(queue_message)
         email_format = queue_message['action'].get('template_format', None)
         if not email_format:
-            email_format = queue_message['action'].get(
-                'template', 'default').endswith('html') and 'html' or 'plain'
+            email_format = (
+                'html'
+                if queue_message['action']
+                .get('template', 'default')
+                .endswith('html')
+                else 'plain'
+            )
 
         for email_to_addrs, message in six.iteritems(to_addrs_to_email_messages_map):
             for to_address in email_to_addrs:

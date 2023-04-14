@@ -79,9 +79,9 @@ class Notify(BaseNotify):
         for batch in utils.chunks(resources, self.batch_size):
             message['resources'] = batch
             receipt = self.send_data_message(message, session)
-            self.log.info("sent message:%s policy:%s template:%s count:%s" % (
-                receipt, self.manager.data['name'],
-                self.data.get('template', 'default'), len(batch)))
+            self.log.info(
+                f"sent message:{receipt} policy:{self.manager.data['name']} template:{self.data.get('template', 'default')} count:{len(batch)}"
+            )
 
     def send_data_message(self, message, session):
         if self.data['transport']['type'] == 'asq':

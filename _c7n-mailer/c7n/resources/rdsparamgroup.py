@@ -96,7 +96,7 @@ class Copy(BaseAction):
         for param_group in param_groups:
             name = self.get_pg_name(param_group)
             copy_name = self.data.get('name')
-            copy_desc = self.data.get('description', 'Copy of {}'.format(name))
+            copy_desc = self.data.get('description', f'Copy of {name}')
             self.do_copy(client, name, copy_name, copy_desc)
             self.log.info('Copied RDS parameter group %s to %s', name, copy_name)
 
@@ -244,14 +244,14 @@ class Modify(BaseAction):
     def process(self, param_groups):
         client = local_session(self.manager.session_factory).client('rds')
 
-        params = []
-        for param in self.data.get('params', []):
-            params.append({
+        params = [
+            {
                 'ParameterName': param['name'],
                 'ParameterValue': param['value'],
                 'ApplyMethod': param.get('apply-method', 'immediate'),
-            })
-
+            }
+            for param in self.data.get('params', [])
+        ]
         for param_group in param_groups:
             name = self.get_pg_name(param_group)
 

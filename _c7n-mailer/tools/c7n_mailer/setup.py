@@ -55,7 +55,7 @@ setup(
     long_description_content_type='text/markdown',
     classifiers=[
         "Topic :: System :: Systems Administration",
-        "Topic :: System :: Distributed Computing"
+        "Topic :: System :: Distributed Computing",
     ],
     url="https://github.com/cloud-custodian/cloud-custodian",
     license="Apache-2.0",
@@ -63,9 +63,9 @@ setup(
     entry_points={
         'console_scripts': [
             'c7n-mailer = c7n_mailer.cli:main',
-            'c7n-mailer-replay = c7n_mailer.replay:main'
+            'c7n-mailer-replay = c7n_mailer.replay:main',
         ]
     },
     install_requires=requires,
-    package_data={str(''): [str('msg-templates/*.j2')]},
+    package_data={'': ['msg-templates/*.j2']},
 )

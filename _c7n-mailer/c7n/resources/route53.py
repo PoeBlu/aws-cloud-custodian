@@ -266,15 +266,14 @@ class SetQueryLogging(BaseAction):
         "Resource": None}
 
     def validate(self):
-        if not self.data.get('state', True):
-            # By forcing use of a filter we ensure both getting to right set of
-            # resources as well avoiding an extra api call here, as we'll reuse
-            # the annotation from the filter for logging config.
-            if not [f for f in self.manager.iter_filters() if isinstance(
-                    f, IsQueryLoggingEnabled)]:
-                raise ValueError(
-                    "set-query-logging when deleting requires "
-                    "use of query-logging-enabled filter in policy")
+        if not self.data.get('state', True) and not [
+            f
+            for f in self.manager.iter_filters()
+            if isinstance(f, IsQueryLoggingEnabled)
+        ]:
+            raise ValueError(
+                "set-query-logging when deleting requires "
+                "use of query-logging-enabled filter in policy")
         return self
 
     def get_permissions(self):
@@ -282,10 +281,14 @@ class SetQueryLogging(BaseAction):
         if self.data.get('set-permissions'):
             perms.extend(('logs:GetResourcePolicy', 'logs:PutResourcePolicy'))
         if self.data.get('state', True):
-            perms.append('route53:CreateQueryLoggingConfig')
-            perms.append('logs:CreateLogGroups')
-            perms.append('logs:DescribeLogGroups')
-            perms.append('tag:GetResources')
+            perms.extend(
+                (
+                    'route53:CreateQueryLoggingConfig',
+                    'logs:CreateLogGroups',
+                    'logs:DescribeLogGroups',
+                    'tag:GetResources',
+                )
+            )
         else:
             perms.append('route53:DeleteQueryLoggingConfig')
         return perms
@@ -308,20 +311,17 @@ class SetQueryLogging(BaseAction):
                 except client.exceptions.NoSuchQueryLoggingConfig:
                     pass
                 continue
-            log_arn = "arn:aws:logs:us-east-1:{}:log-group:{}".format(
-                self.manager.account_id, zone_log_names[r['Id']])
+            log_arn = f"arn:aws:logs:us-east-1:{self.manager.account_id}:log-group:{zone_log_names[r['Id']]}"
             client.create_query_logging_config(
                 HostedZoneId=r['Id'],
                 CloudWatchLogsLogGroupArn=log_arn)
 
     def get_zone_log_name(self, zone):
-        if self.data.get('log-group', 'auto') == 'auto':
-            log_group_name = "%s/%s" % (
-                self.data.get('log-group-prefix', '/aws/route53').rstrip('/'),
-                zone['Name'][:-1])
-        else:
-            log_group_name = self.data['log-group']
-        return log_group_name
+        return (
+            f"{self.data.get('log-group-prefix', '/aws/route53').rstrip('/')}/{zone['Name'][:-1]}"
+            if self.data.get('log-group', 'auto') == 'auto'
+            else self.data['log-group']
+        )
 
     def ensure_log_groups(self, group_names):
         log_manager = self.manager.get_resource_manager('log-group')
@@ -356,12 +356,9 @@ class SetQueryLogging(BaseAction):
         if self.check_route53_permissions(client, group_names):
             return
         if self.data.get('log-group', 'auto') != 'auto':
-            p_resource = "arn:aws:logs:us-east-1:{}:log-group:{}:*".format(
-                self.manager.account_id, self.data['log-group'])
+            p_resource = f"arn:aws:logs:us-east-1:{self.manager.account_id}:log-group:{self.data['log-group']}:*"
         else:
-            p_resource = "arn:aws:logs:us-east-1:{}:log-group:{}/*".format(
-                self.manager.account_id,
-                self.data.get('log-group-prefix', '/aws/route53').rstrip('/'))
+            p_resource = f"arn:aws:logs:us-east-1:{self.manager.account_id}:log-group:{self.data.get('log-group-prefix', '/aws/route53').rstrip('/')}/*"
 
         statement = dict(self.statement)
         statement['Resource'] = p_resource

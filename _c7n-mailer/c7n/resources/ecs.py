@@ -44,9 +44,7 @@ def ecs_taggable(model, r):
     # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-resource-ids.html
     #
     path_parts = r[model.id].rsplit(':', 1)[-1].split('/')
-    if path_parts[0] not in NEW_ARN_STYLE:
-        return True
-    return len(path_parts) > 2
+    return True if path_parts[0] not in NEW_ARN_STYLE else len(path_parts) > 2
 
 
 @resources.register('ecs')
@@ -119,14 +117,15 @@ class ECSClusterResourceDescribeSource(query.ChildDescribeSource):
             parent_child_map.setdefault(pid, []).append(r)
         results = []
         with self.manager.executor_factory(
-                max_workers=self.manager.max_workers) as w:
+                    max_workers=self.manager.max_workers) as w:
             client = local_session(self.manager.session_factory).client('ecs')
-            futures = {}
-            for pid, services in parent_child_map.items():
-                futures[
-                    w.submit(
-                        self.process_cluster_resources, client, pid, services)
-                ] = (pid, services)
+            futures = {
+                w.submit(self.process_cluster_resources, client, pid, services): (
+                    pid,
+                    services,
+                )
+                for pid, services in parent_child_map.items()
+            }
             for f in futures:
                 pid, services = futures[f]
                 if f.exception():
@@ -318,10 +317,9 @@ class UpdateService(BaseAction):
         for r in resources:
             param = {}
 
-            # Handle network separately as it requires atomic updating, and populating
-            # defaults from the resource.
-            net_update = update.get('networkConfiguration', {}).get('awsvpcConfiguration')
-            if net_update:
+            if net_update := update.get('networkConfiguration', {}).get(
+                'awsvpcConfiguration'
+            ):
                 net_param = dict(r['networkConfiguration']['awsvpcConfiguration'])
                 param['networkConfiguration'] = {'awsvpcConfiguration': net_param}
                 for k, v in net_update.items():
@@ -475,7 +473,7 @@ class TaskDefinition(query.QueryResourceManager):
             resources = self.augment(ids)
             return resources
         except ClientError as e:
-            self.log.warning("event ids not resolved: %s error:%s" % (ids, e))
+            self.log.warning(f"event ids not resolved: {ids} error:{e}")
             return []
 
     def augment(self, resources):
@@ -544,7 +542,7 @@ class ECSContainerInstanceDescribeSource(ECSClusterResourceDescribeSource):
 
     def process_cluster_resources(self, client, cluster_id, container_instances):
         results = []
-        for service_set in chunks(container_instances, self.manager.chunk_size):
+        for _ in chunks(container_instances, self.manager.chunk_size):
             r = client.describe_container_instances(
                 cluster=cluster_id,
                 include=['TAGS'],
@@ -583,8 +581,7 @@ class SetState(BaseAction):
         for cluster in cluster_map:
             c_instances = [i['containerInstanceArn'] for i in cluster_map[cluster]
                 if i['status'] != self.data.get('state')]
-            results = self.process_cluster(cluster, c_instances)
-            return results
+            return self.process_cluster(cluster, c_instances)
 
     def process_cluster(self, cluster, c_instances):
         # Limit on number of container instance that can be updated in a single
@@ -599,8 +596,8 @@ class SetState(BaseAction):
                     status=self.data.get('state'))
             except ClientError:
                 self.manager.log.warning(
-                    'Failed to update Container Instances State: %s, cluster %s' %
-                    (service_set, cluster))
+                    f'Failed to update Container Instances State: {service_set}, cluster {cluster}'
+                )
                 raise
 
 
@@ -763,10 +760,15 @@ class ECSTaggable(Filter):
         return self.manager.get_permissions()
 
     def process(self, resources, event=None):
-        if not self.data.get('state'):
-            return [r for r in resources if not ecs_taggable(self.manager.resource_type, r)]
-        else:
-            return [r for r in resources if ecs_taggable(self.manager.resource_type, r)]
+        return (
+            [r for r in resources if ecs_taggable(self.manager.resource_type, r)]
+            if self.data.get('state')
+            else [
+                r
+                for r in resources
+                if not ecs_taggable(self.manager.resource_type, r)
+            ]
+        )
 
 
 ECSCluster.filter_registry.register('marked-for-op', TagActionFilter)

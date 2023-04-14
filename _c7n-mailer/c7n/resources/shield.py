@@ -87,9 +87,7 @@ class IsShieldProtected(Filter):
 
         for arn, r in zip(self.manager.get_arns(resources), resources):
             r['c7n:ShieldProtected'] = shielded = arn in protected_resources
-            if shielded and state:
-                results.append(r)
-            elif not shielded and not state:
+            if shielded and state or not shielded and not state:
                 results.append(r)
         return results
 

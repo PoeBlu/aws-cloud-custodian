@@ -70,10 +70,10 @@ class PostFinding(MethodAction):
     _source = None
 
     def validate(self):
-        if not any([self.data.get(k) for k in ('source', 'org-domain', 'org-id')]):
+        if not any(self.data.get(k) for k in ('source', 'org-domain', 'org-id')):
             raise PolicyValidationError(
-                "policy:%s CSCC post-finding requires one of source, org-domain, org-id" % (
-                    self.manager.ctx.policy.name))
+                f"policy:{self.manager.ctx.policy.name} CSCC post-finding requires one of source, org-domain, org-id"
+            )
 
     def process(self, resources):
         self.initialize_source()
@@ -102,31 +102,36 @@ class PostFinding(MethodAction):
             org_id = self.data['org-id']
         else:
             orgs = session.client('cloudresourcemanager', 'v1', 'organizations')
-            res = orgs.execute_query(
-                'search', {'body': {
-                    'filter': 'domain:%s' % self.data['org-domain']}}).get(
-                        'organizations')
-            if not res:
-                raise PolicyExecutionError("Could not determine organization id")
-            org_id = res[0]['name'].rsplit('/', 1)[-1]
+            if res := orgs.execute_query(
+                'search', {'body': {'filter': f"domain:{self.data['org-domain']}"}}
+            ).get('organizations'):
+                org_id = res[0]['name'].rsplit('/', 1)[-1]
 
+            else:
+                raise PolicyExecutionError("Could not determine organization id")
         # Resolve Source
         client = session.client(self.Service, self.ServiceVersion, 'organizations.sources')
         source = None
-        res = [s for s in
-               client.execute_query(
-                   'list', {'parent': 'organizations/{}'.format(org_id)}).get('sources')
-               if s['displayName'] == self.CustodianSourceName]
-        if res:
+        if res := [
+            s
+            for s in client.execute_query(
+                'list', {'parent': f'organizations/{org_id}'}
+            ).get('sources')
+            if s['displayName'] == self.CustodianSourceName
+        ]:
             source = res[0]['name']
 
         if source is None:
             source = client.execute_command(
                 'create',
-                {'parent': 'organizations/{}'.format(org_id),
-                 'body': {
-                     'displayName': self.CustodianSourceName,
-                     'description': 'Cloud Management Rules Engine'}}).get('name')
+                {
+                    'parent': f'organizations/{org_id}',
+                    'body': {
+                        'displayName': self.CustodianSourceName,
+                        'description': 'Cloud Management Rules Engine',
+                    },
+                },
+            ).get('name')
         self.log.info(
             "policy:%s resolved cscc source: %s, update policy with this source value",
             self.manager.ctx.policy.name,
@@ -149,7 +154,7 @@ class PostFinding(MethodAction):
                 resource_name.encode('utf8'))).hexdigest()[:32]
 
         finding = {
-            'name': '{}/findings/{}'.format(self._source, finding_id),
+            'name': f'{self._source}/findings/{finding_id}',
             'resourceName': resource_name,
             'state': 'ACTIVE',
             'category': self.data.get('category', self.DefaultCategory),
@@ -158,24 +163,25 @@ class PostFinding(MethodAction):
                 'resource-type': self.manager.type,
                 'title': policy.data.get('title', policy.name),
                 'policy-name': policy.name,
-                'policy': json.dumps(policy.data)
-            }
+                'policy': json.dumps(policy.data),
+            },
         }
 
-        request = {
+        return {
             'parent': self._source,
             'findingId': finding_id[:31],
-            'body': finding}
-        return request
+            'body': finding,
+        }
 
     @classmethod
-    def register_resource(klass, registry, event):
+    def register_resource(cls, registry, event):
         for rtype, resource_manager in registry.items():
-            if resource_manager.resource_type.service not in ResourceNameAdapters:
+            if (
+                resource_manager.resource_type.service not in ResourceNameAdapters
+                or 'post-finding' in resource_manager.action_registry
+            ):
                 continue
-            elif 'post-finding' in resource_manager.action_registry:
-                continue
-            resource_manager.action_registry.register('post-finding', klass)
+            resource_manager.action_registry.register('post-finding', cls)
 
 
 # CSCC uses its own notion of resource id, if we want our findings on
@@ -187,15 +193,11 @@ class PostFinding(MethodAction):
 
 def name_compute(r):
     prefix = urlparse(r['selfLink']).path.strip('/').split('/')[2:][:-1]
-    return "//compute.googleapis.com/{}/{}".format(
-        "/".join(prefix),
-        r['id'])
+    return f"""//compute.googleapis.com/{"/".join(prefix)}/{r['id']}"""
 
 
 def name_iam(r):
-    return "//iam.googleapis.com/projects/{}/serviceAccounts/{}".format(
-        r['projectId'],
-        r['uniqueId'])
+    return f"//iam.googleapis.com/projects/{r['projectId']}/serviceAccounts/{r['uniqueId']}"
 
 
 def name_resourcemanager(r):
@@ -205,21 +207,19 @@ def name_resourcemanager(r):
     else:
         rid = r.get('organizationId')
         rtype = 'organizations'
-    return "//cloudresourcemanager.googleapis.com/{}/{}".format(
-        rtype, rid)
+    return f"//cloudresourcemanager.googleapis.com/{rtype}/{rid}"
 
 
 def name_container(r):
-    return "//container.googleapis.com/{}".format(
-        "/".join(urlparse(r['selfLink']).path.strip('/').split('/')[1:]))
+    return f"""//container.googleapis.com/{"/".join(urlparse(r['selfLink']).path.strip('/').split('/')[1:])}"""
 
 
 def name_storage(r):
-    return "//storage.googleapis.com/{}".format(r['name'])
+    return f"//storage.googleapis.com/{r['name']}"
 
 
 def name_appengine(r):
-    return "//appengine.googleapis.com/{}".format(r['name'])
+    return f"//appengine.googleapis.com/{r['name']}"
 
 
 ResourceNameAdapters = {

@@ -50,8 +50,7 @@ def normalized_log_entries(raw_entries):
     entry = None
     # process start/end here - avoid parsing log entries twice
     for line in raw_entries:
-        m = re.match(entry_start, line)
-        if m:
+        if m := re.match(entry_start, line):
             # this is the start of a new entry
             # spit out the one previously built up (if any)
             if entry is not None:
@@ -60,7 +59,7 @@ def normalized_log_entries(raw_entries):
             # convert time
             log_timestamp = _timestamp_from_string(log_time)
             # join level and first line of message
-            msg = '[{}] {}'.format(log_level, log_text)
+            msg = f'[{log_level}] {log_text}'
             entry = {
                 'timestamp': log_timestamp,
                 'message': msg,
@@ -96,15 +95,9 @@ def log_entries_from_s3(session_factory, output, start, end):
     records = []
     key_count = 0
     log_filename = 'custodian-run.log.gz'
-    marker = '{}/{}/{}'.format(
-        key_prefix,
-        start.strftime('%Y/%m/%d/00'),
-        log_filename,
-    )
+    marker = f"{key_prefix}/{start.strftime('%Y/%m/%d/00')}/{log_filename}"
     p = client.get_paginator('list_objects_v2').paginate(
-        Bucket=output.bucket,
-        Prefix=key_prefix + '/',
-        StartAfter=marker,
+        Bucket=output.bucket, Prefix=f'{key_prefix}/', StartAfter=marker
     )
     with ThreadPoolExecutor(max_workers=20) as w:
         for key_set in p:
@@ -113,7 +106,7 @@ def log_entries_from_s3(session_factory, output, start, end):
             log_keys = [k for k in key_set['Contents']
                     if k['Key'].endswith(log_filename)]
             keys = [k for k in log_keys if k['LastModified'] < end]
-            if len(log_keys) >= 1 and len(keys) == 0:
+            if log_keys and not keys:
                 # there were logs, but we're now past the end date
                 break
             key_count += len(keys)
@@ -126,10 +119,7 @@ def log_entries_from_s3(session_factory, output, start, end):
             for f in as_completed(futures):
                 records.extend(f.result())
 
-    log.info('Fetched {} records across {} files'.format(
-        len(records),
-        key_count,
-    ))
+    log.info(f'Fetched {len(records)} records across {key_count} files')
     return records
 
 
@@ -147,7 +137,7 @@ def get_records(bucket, key, session_factory):
 def log_entries_from_group(session, group_name, start, end):
     '''Get logs for a specific log group'''
     logs = session.client('logs')
-    log.info("Fetching logs from group: %s" % group_name)
+    log.info(f"Fetching logs from group: {group_name}")
     try:
         logs.describe_log_groups(logGroupNamePrefix=group_name)
     except ClientError as e:
@@ -174,5 +164,4 @@ def log_entries_from_group(session, group_name, start, end):
             startTime=start,
             endTime=end,
         )
-        for e in result['events']:
-            yield e
+        yield from result['events']

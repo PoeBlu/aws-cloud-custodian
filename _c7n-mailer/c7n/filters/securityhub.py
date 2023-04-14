@@ -33,8 +33,7 @@ class SecurityHubFindingFilter(Filter):
     query_shape = 'AwsSecurityFindingFilters'
 
     def validate(self):
-        query = self.data.get('query')
-        if query:
+        if query := self.data.get('query'):
             from c7n.resources import aws
             aws.shape_validate(query, self.query_shape, 'securityhub')
 
@@ -54,7 +53,7 @@ class SecurityHubFindingFilter(Filter):
         return found
 
     @classmethod
-    def register_resources(klass, registry, resource_class):
+    def register_resources(cls, registry, resource_class):
         """ meta model subscriber on resource registration.
 
         SecurityHub Findings Filter
@@ -64,7 +63,7 @@ class SecurityHubFindingFilter(Filter):
                 continue
             if 'post-finding' in resource_manager.action_registry:
                 continue
-            resource_class.filter_registry.register('finding', klass)
+            resource_class.filter_registry.register('finding', cls)
 
 
 resources.subscribe(resources.EVENT_REGISTER, SecurityHubFindingFilter.register_resources)

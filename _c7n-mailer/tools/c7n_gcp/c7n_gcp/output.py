@@ -85,10 +85,15 @@ class StackDriverMetrics(Metrics):
         client = local_session(self.ctx.session_factory).client(
             'monitoring', 'v3', 'projects.metricDescriptors')
         descriptor_map = {
-            n['type'].rsplit('/', 1)[-1]: n for n in client.execute_command('list', {
-                'name': 'projects/%s' % self.project_id,
-                'filter': 'metric.type=startswith("{}")'.format(self.METRICS_PREFIX)}).get(
-                    'metricsDescriptors', [])}
+            n['type'].rsplit('/', 1)[-1]: n
+            for n in client.execute_command(
+                'list',
+                {
+                    'name': f'projects/{self.project_id}',
+                    'filter': f'metric.type=startswith("{self.METRICS_PREFIX}")',
+                },
+            ).get('metricsDescriptors', [])
+        }
         created = False
         for name in self.METRICS_DESCRIPTORS:
             if name in descriptor_map:
@@ -97,7 +102,8 @@ class StackDriverMetrics(Metrics):
             md = self.METRICS_DESCRIPTORS[name]
             md.update(self.DESCRIPTOR_COMMON)
             client.execute_command(
-                'create', {'name': 'projects/%s' % self.project_id, 'body': md})
+                'create', {'name': f'projects/{self.project_id}', 'body': md}
+            )
 
         if created:
             self.log.info("Initializing StackDriver Metrics Descriptors")
@@ -108,12 +114,12 @@ class StackDriverMetrics(Metrics):
         # limitations on resource type there's not much useful we can
         # utilize.
         now = datetime.datetime.utcnow()
-        metrics_series = {
+        return {
             'metric': {
-                'type': 'custom.googleapis.com/custodian/policy/%s' % key.lower(),
+                'type': f'custom.googleapis.com/custodian/policy/{key.lower()}',
                 'labels': {
                     'policy': self.ctx.policy.name,
-                    'project_id': self.project_id
+                    'project_id': self.project_id,
                 },
             },
             'metricKind': 'GAUGE',
@@ -121,19 +127,24 @@ class StackDriverMetrics(Metrics):
             'resource': {
                 'type': 'global',
             },
-            'points': [{
-                'interval': {
-                    'endTime': now.isoformat('T') + 'Z',
-                    'startTime': now.isoformat('T') + 'Z'},
-                'value': {'int64Value': int(value)}}]
+            'points': [
+                {
+                    'interval': {
+                        'endTime': now.isoformat('T') + 'Z',
+                        'startTime': now.isoformat('T') + 'Z',
+                    },
+                    'value': {'int64Value': int(value)},
+                }
+            ],
         }
-        return metrics_series
 
     def _put_metrics(self, ns, metrics):
         session = local_session(self.ctx.session_factory)
         client = session.client('monitoring', 'v3', 'projects.timeSeries')
-        params = {'name': "projects/{}".format(self.project_id),
-                  'body': {'timeSeries': metrics}}
+        params = {
+            'name': f"projects/{self.project_id}",
+            'body': {'timeSeries': metrics},
+        }
         client.execute_command('create', params)
 
 
@@ -154,7 +165,7 @@ class StackDriverLogging(LogOutput):
 
         log_group = self.ctx.options.log_group
         if log_group.endswith('*'):
-            log_group = "%s%s" % (log_group[:-1], self.ctx.policy.name)
+            log_group = f"{log_group[:-1]}{self.ctx.policy.name}"
 
         project_id = local_session(self.ctx.session_factory).get_default_project()
         client = LogClient(project_id)
@@ -182,19 +193,12 @@ class GCPStorageOutput(DirectoryOutput):
         self.root_dir = tempfile.mkdtemp()
 
     def __repr__(self):
-        return "<%s to bucket:%s prefix:%s>" % (
-            self.__class__.__name__,
-            self.bucket,
-            "%s/%s" % (self.key_prefix, self.date_path))
+        return f"<{self.__class__.__name__} to bucket:{self.bucket} prefix:{self.key_prefix}/{self.date_path}>"
 
     def upload(self):
         for root, dirs, files in os.walk(self.root_dir):
             for f in files:
-                key = "%s/%s%s" % (
-                    self.key_prefix,
-                    self.date_path,
-                    "%s/%s" % (
-                        root[len(self.root_dir):], f))
+                key = f"{self.key_prefix}/{self.date_path}{root[len(self.root_dir):]}/{f}"
                 key = key.strip('/')
                 self.transfer.upload_file(
                     os.path.join(root, f), self.bucket, key,
@@ -210,8 +214,5 @@ def parse_gs(gs_path):
         ridx = None
     bucket = gs_path[5:ridx]
     gs_path = gs_path.rstrip('/')
-    if ridx is None:
-        key_prefix = ""
-    else:
-        key_prefix = gs_path[gs_path.find('/', 5):]
+    key_prefix = "" if ridx is None else gs_path[gs_path.find('/', 5):]
     return gs_path, bucket, key_prefix

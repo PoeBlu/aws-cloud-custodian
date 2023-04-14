@@ -47,7 +47,7 @@ class RestAccount(ResourceManager):
         return ('apigateway:GET',)
 
     @classmethod
-    def has_arn(self):
+    def has_arn(cls):
         return False
 
     def get_model(self):
@@ -371,10 +371,9 @@ class FilterRestIntegration(ValueFilter):
             tasks = []
             for r in resources:
                 r_method_set = method_set
-                if method_set == 'all':
+                if r_method_set == 'all':
                     r_method_set = r.get('resourceMethods', {}).keys()
-                for m in r_method_set:
-                    tasks.append((r, m))
+                tasks.extend((r, m) for m in r_method_set)
             for task_set in utils.chunks(tasks, 20):
                 futures[w.submit(
                     self.process_task_set, client, task_set)] = task_set
@@ -385,8 +384,8 @@ class FilterRestIntegration(ValueFilter):
                 if f.exception():
                     self.manager.log.warning(
                         "Error retrieving integrations on resources %s",
-                        ["%s:%s" % (r['restApiId'], r['path'])
-                         for r, mt in task_set])
+                        [f"{r['restApiId']}:{r['path']}" for r, mt in task_set],
+                    )
                     continue
 
                 for i in f.result():
@@ -411,9 +410,7 @@ class FilterRestIntegration(ValueFilter):
                 integration['resourceHttpMethod'] = m
                 results.append(integration)
             except ClientError as e:
-                if e.response['Error']['Code'] == 'NotFoundException':
-                    pass
-
+                pass
         return results
 
 
@@ -447,11 +444,10 @@ class UpdateRestIntegration(BaseAction):
     permissions = ('apigateway:PATCH',)
 
     def validate(self):
-        found = False
-        for f in self.manager.iter_filters():
-            if isinstance(f, FilterRestIntegration):
-                found = True
-                break
+        found = any(
+            isinstance(f, FilterRestIntegration)
+            for f in self.manager.iter_filters()
+        )
         if not found:
             raise ValueError(
                 ("update-integration action requires ",
@@ -548,10 +544,9 @@ class FilterRestMethod(ValueFilter):
             tasks = []
             for r in resources:
                 r_method_set = method_set
-                if method_set == 'all':
+                if r_method_set == 'all':
                     r_method_set = r.get('resourceMethods', {}).keys()
-                for m in r_method_set:
-                    tasks.append((r, m))
+                tasks.extend((r, m) for m in r_method_set)
             for task_set in utils.chunks(tasks, 20):
                 futures[w.submit(
                     self.process_task_set, client, task_set)] = task_set
@@ -561,8 +556,8 @@ class FilterRestMethod(ValueFilter):
                 if f.exception():
                     self.manager.log.warning(
                         "Error retrieving methods on resources %s",
-                        ["%s:%s" % (r['restApiId'], r['path'])
-                         for r, mt in task_set])
+                        [f"{r['restApiId']}:{r['path']}" for r, mt in task_set],
+                    )
                     continue
                 for m in f.result():
                     if self.match(m):
@@ -616,11 +611,9 @@ class UpdateRestMethod(BaseAction):
     permissions = ('apigateway:GET',)
 
     def validate(self):
-        found = False
-        for f in self.manager.iter_filters():
-            if isinstance(f, FilterRestMethod):
-                found = True
-                break
+        found = any(
+            isinstance(f, FilterRestMethod) for f in self.manager.iter_filters()
+        )
         if not found:
             raise ValueError(
                 ("update-method action requires ",

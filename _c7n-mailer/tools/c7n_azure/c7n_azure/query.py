@@ -39,12 +39,10 @@ class ResourceQuery(object):
         enum_op, list_op, extra_args = m.enum_spec
 
         if extra_args:
-            params.update(extra_args)
+            params |= extra_args
 
         op = getattr(getattr(resource_manager.get_client(), enum_op), list_op)
-        data = [r.serialize(True) for r in op(**params)]
-
-        return data
+        return [r.serialize(True) for r in op(**params)]
 
     @staticmethod
     def resolve(resource_type):
@@ -92,9 +90,7 @@ class ChildResourceQuery(ResourceQuery):
         results = []
         for parent in parents.resources():
             try:
-                subset = self.manager.enumerate_resources(parent, m, **params)
-
-                if subset:
+                if subset := self.manager.enumerate_resources(parent, m, **params):
                     # If required, append parent resource ID to all child resources
                     if m.annotate_parent:
                         for r in subset:
@@ -127,10 +123,8 @@ class ChildDescribeSource(DescribeSource):
 
 class TypeMeta(type):
 
-    def __repr__(cls):
-        return "<Type info service:%s client: %s>" % (
-            cls.service,
-            cls.client)
+    def __repr__(self):
+        return f"<Type info service:{self.service} client: {self.client}>"
 
 
 @six.add_metaclass(TypeMeta)
@@ -159,11 +153,9 @@ class QueryMeta(type):
     """metaclass to have consistent action/filter registry for new resources."""
     def __new__(cls, name, parents, attrs):
         if 'filter_registry' not in attrs:
-            attrs['filter_registry'] = FilterRegistry(
-                '%s.filters' % name.lower())
+            attrs['filter_registry'] = FilterRegistry(f'{name.lower()}.filters')
         if 'action_registry' not in attrs:
-            attrs['action_registry'] = ActionRegistry(
-                '%s.actions' % name.lower())
+            attrs['action_registry'] = ActionRegistry(f'{name.lower()}.actions')
 
         return super(QueryMeta, cls).__new__(cls, name, parents, attrs)
 
@@ -191,10 +183,13 @@ class QueryResourceManager(ResourceManager):
         return self._session
 
     def get_client(self, service=None):
-        if not service:
-            return self.get_session().client(
-                "%s.%s" % (self.resource_type.service, self.resource_type.client))
-        return self.get_session().client(service)
+        return (
+            self.get_session().client(service)
+            if service
+            else self.get_session().client(
+                f"{self.resource_type.service}.{self.resource_type.client}"
+            )
+        )
 
     def get_cache_key(self, query):
         return {'source_type': self.source_type, 'query': query}
@@ -219,7 +214,7 @@ class QueryResourceManager(ResourceManager):
         get_client, get_op, extra_args = m.get_spec
 
         if extra_args:
-            params.update(extra_args)
+            params |= extra_args
 
         op = getattr(getattr(resource_client, get_client), get_op)
         data = [
@@ -269,9 +264,9 @@ class ChildResourceManager(QueryResourceManager):
         #   - static values stored in 'extra_args' dict (e.g. some type)
         #   - dynamic values are retrieved via 'extra_args' method (e.g. parent name)
         if extra_args:
-            params.update({key: extra_args[key](parent_resource) for key in extra_args.keys()})
+            params |= {key: extra_args[key](parent_resource) for key in extra_args.keys()}
 
-        params.update(type_info.extra_args(parent_resource))
+        params |= type_info.extra_args(parent_resource)
 
         # Some resources might not have enum_op piece (non-arm resources)
         if enum_op:

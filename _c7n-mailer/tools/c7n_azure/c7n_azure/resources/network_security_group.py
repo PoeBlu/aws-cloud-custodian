@@ -119,13 +119,16 @@ class NetworkSecurityGroupFilter(Filter):
     def validate(self):
         # Check that variable values are valid
 
-        if PORTS in self.data:
-            if not PortsRangeHelper.validate_ports_string(self.data[PORTS]):
-                raise FilterValidationError("ports string has wrong format.")
+        if PORTS in self.data and not PortsRangeHelper.validate_ports_string(
+            self.data[PORTS]
+        ):
+            raise FilterValidationError("ports string has wrong format.")
 
-        if EXCEPT_PORTS in self.data:
-            if not PortsRangeHelper.validate_ports_string(self.data[EXCEPT_PORTS]):
-                raise FilterValidationError("exceptPorts string has wrong format.")
+        if (
+            EXCEPT_PORTS in self.data
+            and not PortsRangeHelper.validate_ports_string(self.data[EXCEPT_PORTS])
+        ):
+            raise FilterValidationError("exceptPorts string has wrong format.")
         return True
 
     def process(self, network_security_groups, event=None):
@@ -141,8 +144,7 @@ class NetworkSecurityGroupFilter(Filter):
         except_set = PortsRangeHelper.get_ports_set_from_string(self.data.get(EXCEPT_PORTS, ''))
         self.ports = ports_set.difference(except_set)
 
-        nsgs = [nsg for nsg in network_security_groups if self._check_nsg(nsg)]
-        return nsgs
+        return [nsg for nsg in network_security_groups if self._check_nsg(nsg)]
 
     def _check_nsg(self, nsg):
         nsg_ports = PortsRangeHelper.build_ports_dict(nsg, self.direction_key, self.ip_protocol)
@@ -151,15 +153,9 @@ class NetworkSecurityGroupFilter(Filter):
         num_deny_ports = len(self.ports) - num_allow_ports
 
         if self.match == 'all':
-            if self.IsAllowed:
-                return num_deny_ports == 0
-            else:
-                return num_allow_ports == 0
-        if self.match == 'any':
-            if self.IsAllowed:
-                return num_allow_ports > 0
-            else:
-                return num_deny_ports > 0
+            return num_deny_ports == 0 if self.IsAllowed else num_allow_ports == 0
+        elif self.match == 'any':
+            return num_allow_ports > 0 if self.IsAllowed else num_deny_ports > 0
 
 
 @NetworkSecurityGroup.filter_registry.register('ingress')
@@ -194,13 +190,16 @@ class NetworkSecurityGroupPortsAction(BaseAction):
     def validate(self):
         # Check that variable values are valid
 
-        if PORTS in self.data:
-            if not PortsRangeHelper.validate_ports_string(self.data[PORTS]):
-                raise PolicyValidationError("ports string has wrong format.")
+        if PORTS in self.data and not PortsRangeHelper.validate_ports_string(
+            self.data[PORTS]
+        ):
+            raise PolicyValidationError("ports string has wrong format.")
 
-        if EXCEPT_PORTS in self.data:
-            if not PortsRangeHelper.validate_ports_string(self.data[EXCEPT_PORTS]):
-                raise PolicyValidationError("exceptPorts string has wrong format.")
+        if (
+            EXCEPT_PORTS in self.data
+            and not PortsRangeHelper.validate_ports_string(self.data[EXCEPT_PORTS])
+        ):
+            raise PolicyValidationError("exceptPorts string has wrong format.")
         return True
 
     def _build_ports_strings(self, nsg, direction_key, ip_protocol):
@@ -239,10 +238,10 @@ class NetworkSecurityGroupPortsAction(BaseAction):
             rules = sorted(rules, key=lambda k: k['properties']['priority'])
             rules = [r for r in rules
                      if StringUtils.equal(r['properties']['direction'], direction)]
-            lowest_priority = rules[0]['properties']['priority'] if len(rules) > 0 else 4096
+            lowest_priority = rules[0]['properties']['priority'] if rules else 4096
 
             # Create new top-priority rule to allow/block ports from the action.
-            rule_name = 'c7n-policy-' + str(uuid.uuid1())
+            rule_name = f'c7n-policy-{str(uuid.uuid1())}'
             new_rule = {
                 'name': rule_name,
                 'properties': {

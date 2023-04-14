@@ -69,12 +69,12 @@ def get_local_output_dir():
     directory and changing unix execution users (2015-2018), so use a
     per execution temp space. With firecracker lambdas this may be outdated.
     """
-    output_dir = os.environ.get('C7N_OUTPUT_DIR', '/tmp/' + str(uuid.uuid4()))
+    output_dir = os.environ.get('C7N_OUTPUT_DIR', f'/tmp/{str(uuid.uuid4())}')
     if not os.path.exists(output_dir):
         try:
             os.mkdir(output_dir)
         except OSError as error:
-            log.warning("Unable to make output directory: {}".format(error))
+            log.warning(f"Unable to make output directory: {error}")
     return output_dir
 
 
@@ -140,7 +140,7 @@ def init_config(policy_config):
 def dispatch_event(event, context):
     error = event.get('detail', {}).get('errorCode')
     if error and C7N_SKIP_EVTERR:
-        log.debug("Skipping failed operation: %s" % error)
+        log.debug(f"Skipping failed operation: {error}")
         return
 
     if C7N_DEBUG_EVENT:
@@ -158,8 +158,7 @@ def dispatch_event(event, context):
 
     options = init_config(policy_config)
 
-    policies = PolicyCollection.from_data(policy_config, options)
-    if policies:
+    if policies := PolicyCollection.from_data(policy_config, options):
         for p in policies:
             try:
                 # validation provides for an initialization point for

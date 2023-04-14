@@ -83,10 +83,12 @@ class AutoTagUser(EventAction):
     def validate(self):
         if self.manager.data.get('mode', {}).get('type') != 'cloudtrail':
             raise PolicyValidationError(
-                "Auto tag owner requires an event %s" % (self.manager.data,))
+                f"Auto tag owner requires an event {self.manager.data}"
+            )
         if self.manager.action_registry.get('tag') is None:
             raise PolicyValidationError(
-                "Resource does not support tagging %s" % (self.manager.data,))
+                f"Resource does not support tagging {self.manager.data}"
+            )
         if 'tag' not in self.data:
             raise PolicyValidationError(
                 "auto-tag action requires 'tag'")
@@ -101,10 +103,7 @@ class AutoTagUser(EventAction):
             return
 
         user = None
-        if utype == "IAMUser":
-            user = event['userIdentity']['userName']
-            principal_id_value = event['userIdentity'].get('principalId', '')
-        elif utype == "AssumedRole":
+        if utype == "AssumedRole":
             user = event['userIdentity']['arn']
             prefix, user = user.rsplit('/', 1)
             principal_id_value = event['userIdentity'].get('principalId', '').split(':')[0]
@@ -114,6 +113,9 @@ class AutoTagUser(EventAction):
             # lambda function (old style)
             elif user.startswith('awslambda'):
                 return
+        elif utype == "IAMUser":
+            user = event['userIdentity']['userName']
+            principal_id_value = event['userIdentity'].get('principalId', '')
         if user is None:
             return
         # if the auto-tag-user policy set update to False (or it's unset) then we
@@ -122,15 +124,12 @@ class AutoTagUser(EventAction):
             untagged_resources = []
             # iterating over all the resources the user spun up in this event
             for resource in resources:
-                tag_already_set = False
-                for tag in resource.get('Tags', ()):
-                    if tag['Key'] == self.data['tag']:
-                        tag_already_set = True
-                        break
+                tag_already_set = any(
+                    tag['Key'] == self.data['tag']
+                    for tag in resource.get('Tags', ())
+                )
                 if not tag_already_set:
                     untagged_resources.append(resource)
-        # if update is set to True, we will overwrite the userName tag even if
-        # the user already set a value
         else:
             untagged_resources = resources
 

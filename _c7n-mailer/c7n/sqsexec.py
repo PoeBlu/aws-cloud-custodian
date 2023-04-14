@@ -34,7 +34,7 @@ log = logging.getLogger('custodian.sqsexec')
 
 def named(o):
     assert inspect.isfunction(o)
-    return "%s:%s" % (o.__module__, o.__name__)
+    return f"{o.__module__}:{o.__name__}"
 
 
 def resolve(o):
@@ -85,8 +85,11 @@ class SQSExecutor(Executor):
         for m in results:
             # sequence_id from above
             msg_id = int(m['MessageAttributes']['sequence_id']['StringValue'])
-            if (not msg_id > self.op_sequence_start or not msg_id <= self.op_sequence or
-            msg_id not in self.futures):
+            if (
+                msg_id <= self.op_sequence_start
+                or msg_id > self.op_sequence
+                or msg_id not in self.futures
+            ):
                 raise RuntimeError(
                     "Concurrent queue user from different "
                     "process or previous results")
@@ -164,9 +167,7 @@ class SQSWorker(object):
         try:
             func(*msg['args'], **msg['kwargs'])
         except Exception as e:
-            log.exception(
-                "Error invoking %s %s" % (
-                    op_name, e))
+            log.exception(f"Error invoking {op_name} {e}")
             return
 
 

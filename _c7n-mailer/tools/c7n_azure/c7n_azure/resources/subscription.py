@@ -107,8 +107,14 @@ class AddPolicy(BaseAction):
         self.policyDefinitionName = self.data['definition_name']
 
     def _get_definition_id(self, name):
-        return next((r for r in self.policyClient.policy_definitions.list()
-                     if name == r.display_name or name == r.id or name == r.name), None)
+        return next(
+            (
+                r
+                for r in self.policyClient.policy_definitions.list()
+                if name in [r.display_name, r.id, r.name]
+            ),
+            None,
+        )
 
     def _add_policy(self, subscription):
         parameters = PolicyAssignment(
@@ -124,13 +130,15 @@ class AddPolicy(BaseAction):
         self.session = local_session(self.manager.session_factory)
         self.policyClient = self.session.client("azure.mgmt.resource.policy.PolicyClient")
 
-        self.scope = '/subscriptions/' + self.session.subscription_id + \
-                     '/' + self.data.get('scope', '')
+        self.scope = (
+            f'/subscriptions/{self.session.subscription_id}/'
+            + self.data.get('scope', '')
+        )
         self.policyDefinition = self._get_definition_id(self.policyDefinitionName)
         if self.policyDefinition is None:
             raise PolicyValidationError(
-                "Azure Policy Definition '%s' not found." % (
-                    self.policyDefinitionName))
+                f"Azure Policy Definition '{self.policyDefinitionName}' not found."
+            )
 
         for s in subscriptions:
             self._add_policy(s)

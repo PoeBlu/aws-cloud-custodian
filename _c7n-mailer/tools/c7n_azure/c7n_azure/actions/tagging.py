@@ -235,19 +235,22 @@ class AutoTagUser(AzureEventAction):
         # resource group type
         if self.manager.type == 'resourcegroup':
             resource_type = "Microsoft.Resources/subscriptions/resourcegroups"
-            query_filter = " and ".join([
-                "eventTimestamp ge '%s'" % start_time,
-                "resourceGroupName eq '%s'" % resource['name'],
-                "eventChannels eq 'Operation'"
-            ])
-        # other Azure resources
+            query_filter = " and ".join(
+                [
+                    f"eventTimestamp ge '{start_time}'",
+                    f"resourceGroupName eq '{resource['name']}'",
+                    "eventChannels eq 'Operation'",
+                ]
+            )
         else:
             resource_type = resource['type']
-            query_filter = " and ".join([
-                "eventTimestamp ge '%s'" % start_time,
-                "resourceUri eq '%s'" % resource['id'],
-                "eventChannels eq 'Operation'"
-            ])
+            query_filter = " and ".join(
+                [
+                    f"eventTimestamp ge '{start_time}'",
+                    f"resourceUri eq '{resource['id']}'",
+                    "eventChannels eq 'Operation'",
+                ]
+            )
 
         # fetch activity logs
         logs = self.client.activity_logs.list(
@@ -256,7 +259,7 @@ class AutoTagUser(AzureEventAction):
         )
 
         # get the user who issued the first operation
-        operation_name = "%s/write" % resource_type
+        operation_name = f"{resource_type}/write"
         first_op = self.get_first_operation(logs, operation_name)
         return first_op.caller if first_op else None
 
@@ -348,8 +351,7 @@ class TagTrim(AzureBaseAction):
             candidates = list(sorted(candidates))[:remove]
 
         if not candidates:
-            self.log.warning(
-                "Could not find any candidates to trim %s" % resource['id'])
+            self.log.warning(f"Could not find any candidates to trim {resource['id']}")
             return
 
         TagHelper.remove_tags(self, resource, candidates)
@@ -416,15 +418,15 @@ class TagDelayedAction(AzureBaseAction):
         op = self.data.get('op')
         if self.manager and op not in self.manager.action_registry.keys():
             raise PolicyValidationError(
-                "mark-for-op specifies invalid op:%s in %s" % (
-                    op, self.manager.data))
+                f"mark-for-op specifies invalid op:{op} in {self.manager.data}"
+            )
 
         self.tz = tzutils.gettz(
             Time.TZ_ALIASES.get(self.data.get('tz', 'utc')))
         if not self.tz:
             raise PolicyValidationError(
-                "Invalid timezone specified %s in %s" % (
-                    self.tz, self.manager.data))
+                f"Invalid timezone specified {self.tz} in {self.manager.data}"
+            )
         return self
 
     def generate_timestamp(self, days, hours):
@@ -434,12 +436,11 @@ class TagDelayedAction(AzureBaseAction):
             # maintains default value of days being 4 if nothing is provided
             days = 4
         action_date = (n + datetime.timedelta(days=days, hours=hours))
-        if hours > 0:
-            action_date_string = action_date.strftime('%Y/%m/%d %H%M %Z')
-        else:
-            action_date_string = action_date.strftime('%Y/%m/%d')
-
-        return action_date_string
+        return (
+            action_date.strftime('%Y/%m/%d %H%M %Z')
+            if hours > 0
+            else action_date.strftime('%Y/%m/%d')
+        )
 
     def _process_resource(self, resource):
         tags = resource.get('tags', {})

@@ -41,8 +41,9 @@ class Certificate(QueryResourceManager):
             return DescribeCertificate(self)
         elif source_type == 'config':
             return ConfigSource(self)
-        raise ValueError("Unsupported source: %s for %s" % (
-            source_type, self.resource_type.config_type))
+        raise ValueError(
+            f"Unsupported source: {source_type} for {self.resource_type.config_type}"
+        )
 
 
 class DescribeCertificate(DescribeSource):

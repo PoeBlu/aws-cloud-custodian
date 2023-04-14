@@ -66,7 +66,7 @@ class FlightRecorderTest(TestUtils):
         self.recording = False
 
         if not os.path.exists(test_dir):
-            raise RuntimeError("Invalid Test Dir for flight data %s" % test_dir)
+            raise RuntimeError(f"Invalid Test Dir for flight data {test_dir}")
 
         self.addCleanup(self.cleanUp)
         bound = {'http': HttpReplay(test_dir, discovery_dir)}

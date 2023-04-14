@@ -247,10 +247,7 @@ class SetSslListenerPolicy(BaseAction):
         error = None
 
         with self.executor_factory(max_workers=2) as w:
-            futures = {}
-            for lb in load_balancers:
-                futures[w.submit(self.process_elb, client, lb)] = lb
-
+            futures = {w.submit(self.process_elb, client, lb): lb for lb in load_balancers}
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
@@ -269,7 +266,7 @@ class SetSslListenerPolicy(BaseAction):
         # to make it unique within the
         # set of policies for this load balancer.
         policy_name = self.data.get('name') + '-' + \
-            str(int(datetime.now(tz=tzutc()).strftime("%s")) * 1000)
+                str(int(datetime.now(tz=tzutc()).strftime("%s")) * 1000)
         lb_name = elb['LoadBalancerName']
         attrs = self.data.get('attributes')
         policy_attributes = [{'AttributeName': attr, 'AttributeValue': 'true'}
@@ -287,11 +284,7 @@ class SetSslListenerPolicy(BaseAction):
                     'DuplicationPolicyNameException'):
                 raise
 
-        # Apply it to all SSL listeners.
-        ssl_policies = ()
-        if 'c7n.ssl-policies' in elb:
-            ssl_policies = elb['c7n.ssl-policies']
-
+        ssl_policies = elb['c7n.ssl-policies'] if 'c7n.ssl-policies' in elb else ()
         for ld in elb['ListenerDescriptions']:
             if ld['Listener']['Protocol'] in ('HTTPS', 'SSL'):
                 policy_names = [policy_name]
@@ -400,10 +393,10 @@ class DisableS3Logging(BaseAction):
 
 
 def is_ssl(b):
-    for ld in b['ListenerDescriptions']:
-        if ld['Listener']['Protocol'] in ('HTTPS', 'SSL'):
-            return True
-    return False
+    return any(
+        ld['Listener']['Protocol'] in ('HTTPS', 'SSL')
+        for ld in b['ListenerDescriptions']
+    )
 
 
 @filters.register('security-group')
@@ -553,24 +546,22 @@ class SSLPolicyFilter(Filter):
     def validate(self):
         if 'whitelist' in self.data and 'blacklist' in self.data:
             raise PolicyValidationError(
-                "cannot specify whitelist and black list on %s" % (
-                    self.manager.data,))
+                f"cannot specify whitelist and black list on {self.manager.data}"
+            )
         if 'whitelist' not in self.data and 'blacklist' not in self.data:
             raise PolicyValidationError(
-                "must specify either policy blacklist or whitelist on %s" % (
-                    self.manager.data,))
+                f"must specify either policy blacklist or whitelist on {self.manager.data}"
+            )
         if ('blacklist' in self.data and
                 not isinstance(self.data['blacklist'], list)):
-            raise PolicyValidationError("blacklist must be a list on %s" % (
-                self.manager.data,))
+            raise PolicyValidationError(f"blacklist must be a list on {self.manager.data}")
 
         if 'matching' in self.data:
             # Sanity check that we can compile
             try:
                 re.compile(self.data['matching'])
             except re.error as e:
-                raise PolicyValidationError(
-                    "Invalid regex: %s %s" % (e, self.manager.data))
+                raise PolicyValidationError(f"Invalid regex: {e} {self.manager.data}")
 
         return self
 
@@ -588,21 +579,23 @@ class SSLPolicyFilter(Filter):
             regex = self.data.get('matching')
             filtered_pairs = []
             for (elb, active_policies) in active_policy_attribute_tuples:
-                filtered_policies = [policy for policy in active_policies if
-                bool(re.match(regex, policy, flags=re.IGNORECASE))]
-                if filtered_policies:
+                if filtered_policies := [
+                    policy
+                    for policy in active_policies
+                    if bool(re.match(regex, policy, flags=re.IGNORECASE))
+                ]:
                     filtered_pairs.append((elb, filtered_policies))
             active_policy_attribute_tuples = filtered_pairs
 
         if blacklist:
             for elb, active_policies in active_policy_attribute_tuples:
-                if len(blacklist.intersection(active_policies)) > 0:
+                if blacklist.intersection(active_policies):
                     elb["ProhibitedPolicies"] = list(
                         blacklist.intersection(active_policies))
                     invalid_elbs.append(elb)
         elif whitelist:
             for elb, active_policies in active_policy_attribute_tuples:
-                if len(set(active_policies).difference(whitelist)) > 0:
+                if set(active_policies).difference(whitelist):
                     elb["ProhibitedPolicies"] = list(
                         set(active_policies).difference(whitelist))
                     invalid_elbs.append(elb)
@@ -616,10 +609,7 @@ class SSLPolicyFilter(Filter):
 
         elb_custom_policy_tuples = self.create_elb_custom_policy_tuples(elbs)
 
-        active_policy_attribute_tuples = (
-            self.create_elb_active_attributes_tuples(elb_custom_policy_tuples))
-
-        return active_policy_attribute_tuples
+        return self.create_elb_active_attributes_tuples(elb_custom_policy_tuples)
 
     def create_elb_custom_policy_tuples(self, balancers):
         """
@@ -630,8 +620,7 @@ class SSLPolicyFilter(Filter):
         for b in balancers:
             policies = []
             for ld in b['ListenerDescriptions']:
-                for p in ld['PolicyNames']:
-                    policies.append(p)
+                policies.extend(iter(ld['PolicyNames']))
             elb_policy_tuples.append((b, policies))
 
         return elb_policy_tuples
@@ -645,20 +634,17 @@ class SSLPolicyFilter(Filter):
         active_policy_attribute_tuples = []
         client = local_session(self.manager.session_factory).client('elb')
         with self.executor_factory(max_workers=2) as w:
-            futures = []
-            for elb_policy_set in chunks(elb_policy_tuples, 50):
-                futures.append(
-                    w.submit(self.process_elb_policy_set, client, elb_policy_set))
-
+            futures = [
+                w.submit(self.process_elb_policy_set, client, elb_policy_set)
+                for elb_policy_set in chunks(elb_policy_tuples, 50)
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
                         "Exception processing elb policies \n %s" % (
                             f.exception()))
                     continue
-                for elb_policies in f.result():
-                    active_policy_attribute_tuples.append(elb_policies)
-
+                active_policy_attribute_tuples.extend(iter(f.result()))
         return active_policy_attribute_tuples
 
     def process_elb_policy_set(self, client, elb_policy_set):

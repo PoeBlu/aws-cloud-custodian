@@ -25,7 +25,7 @@ from .sqs_queue_processor import MailerSqsQueueProcessor
 
 def config_setup(config=None):
     task_dir = os.environ.get('LAMBDA_TASK_ROOT')
-    os.environ['PYTHONPATH'] = "%s:%s" % (task_dir, os.environ.get('PYTHONPATH', ''))
+    os.environ['PYTHONPATH'] = f"{task_dir}:{os.environ.get('PYTHONPATH', '')}"
     if not config:
         with open(os.path.join(task_dir, 'config.json')) as fh:
             config = json.load(fh)

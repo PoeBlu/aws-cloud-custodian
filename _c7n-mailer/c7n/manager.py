@@ -45,8 +45,9 @@ class ResourceManager(object):
         self.config = ctx.options
         self.data = data
         self._cache = cache.factory(self.ctx.options)
-        self.log = logging.getLogger('custodian.resources.%s' % (
-            self.__class__.__name__.lower()))
+        self.log = logging.getLogger(
+            f'custodian.resources.{self.__class__.__name__.lower()}'
+        )
 
         if self.filter_registry:
             self.filters = self.filter_registry.parse(
@@ -104,7 +105,7 @@ class ResourceManager(object):
                 break
             rcount = len(resources)
 
-            with self.ctx.tracer.subsegment("filter:%s" % f.type):
+            with self.ctx.tracer.subsegment(f"filter:{f.type}"):
                 resources = f.process(resources, event)
 
             if event and event.get('debug', False):

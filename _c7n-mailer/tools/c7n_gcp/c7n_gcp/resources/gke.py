@@ -38,11 +38,11 @@ class KubernetesCluster(QueryResourceManager):
         @staticmethod
         def get(client, resource_info):
             return client.execute_query(
-                'get', verb_arguments={
-                    'name': 'projects/{}/locations/{}/clusters/{}'.format(
-                        resource_info['project_id'],
-                        resource_info['location'],
-                        resource_info['cluster_name'])})
+                'get',
+                verb_arguments={
+                    'name': f"projects/{resource_info['project_id']}/locations/{resource_info['location']}/clusters/{resource_info['cluster_name']}"
+                },
+            )
 
 
 @resources.register('gke-nodepool')
@@ -56,19 +56,16 @@ class KubernetesClusterNodePool(ChildResourceManager):
             '.*?/projects/(.*?)/zones/(.*?)/clusters/(.*?)/nodePools/(.*?)'
         )
         parent_values = re.match(project_param_re, child_instance['selfLink']).groups()
-        parent_info = dict(
-            zip(('project_id', 'location', 'cluster_name', 'node_name'), parent_values)
+        return dict(
+            zip(
+                ('project_id', 'location', 'cluster_name', 'node_name'),
+                parent_values,
+            )
         )
-
-        return parent_info
 
     def _get_child_enum_args(self, parent_instance):
         return {
-            'parent': 'projects/{}/locations/{}/clusters/{}'.format(
-                local_session(self.session_factory).get_default_project(),
-                parent_instance['location'],
-                parent_instance['name']
-            )
+            'parent': f"projects/{local_session(self.session_factory).get_default_project()}/locations/{parent_instance['location']}/clusters/{parent_instance['name']}"
         }
 
     class resource_type(ChildTypeInfo):
@@ -84,14 +81,12 @@ class KubernetesClusterNodePool(ChildResourceManager):
         def get(client, resource_info):
             cluster_name = resource_info['cluster_name']
             name = re.match(
-                r".*{}-(.*)-[^-]+-[^-]?".format(cluster_name),
-                resource_info['resourceName']).group(1)
+                f".*{cluster_name}-(.*)-[^-]+-[^-]?", resource_info['resourceName']
+            )[1]
 
             return client.execute_command(
-                'get', verb_arguments={
-                    'name': 'projects/{}/locations/{}/clusters/{}/nodePools/{}'.format(
-                        resource_info['project_id'],
-                        resource_info['location'],
-                        resource_info['cluster_name'],
-                        name)}
+                'get',
+                verb_arguments={
+                    'name': f"projects/{resource_info['project_id']}/locations/{resource_info['location']}/clusters/{resource_info['cluster_name']}/nodePools/{name}"
+                },
             )

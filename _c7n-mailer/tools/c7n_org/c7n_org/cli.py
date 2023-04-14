@@ -201,9 +201,7 @@ def resolve_regions(regions):
     if 'all' in regions:
         client = boto3.client('ec2')
         return [region['RegionName'] for region in client.describe_regions()['Regions']]
-    if not regions:
-        return ('us-east-1', 'us-west-2')
-    return regions
+    return regions if regions else ('us-east-1', 'us-west-2')
 
 
 def get_session(account, session_name, region):
@@ -227,8 +225,7 @@ def get_session(account, session_name, region):
     elif account.get('profile'):
         return SessionFactory(region, account['profile'])()
     else:
-        raise ValueError(
-            "No profile or role assume specified for account %s" % account)
+        raise ValueError(f"No profile or role assume specified for account {account}")
 
 
 def filter_accounts(accounts_config, tags, accounts, not_accounts=None):
@@ -239,11 +236,8 @@ def filter_accounts(accounts_config, tags, accounts, not_accounts=None):
         if accounts and a['name'] not in accounts:
             continue
         if tags:
-            found = set()
-            for t in tags:
-                if t in a.get('tags', ()):
-                    found.add(t)
-            if not found == set(tags):
+            found = {t for t in tags if t in a.get('tags', ())}
+            if found != set(tags):
                 continue
         filtered_accounts.append(a)
     accounts_config['accounts'] = filtered_accounts
@@ -259,11 +253,8 @@ def filter_policies(policies_config, tags, policies, resource, not_policies=None
         if resource and p['resource'] != resource:
             continue
         if tags:
-            found = set()
-            for t in tags:
-                if t in p.get('tags', ()):
-                    found.add(t)
-            if not found == set(tags):
+            found = {t for t in tags if t in p.get('tags', ())}
+            if found != set(tags):
                 continue
         filtered_policies.append(p)
     policies_config['policies'] = filtered_policies
@@ -271,7 +262,7 @@ def filter_policies(policies_config, tags, policies, resource, not_policies=None
 
 def report_account(account, region, policies_config, output_path, cache_path, debug):
     output_path = os.path.join(output_path, account['name'], region)
-    cache_path = os.path.join(cache_path, "%s-%s.cache" % (account['name'], region))
+    cache_path = os.path.join(cache_path, f"{account['name']}-{region}.cache")
 
     config = Config.empty(
         region=region,
@@ -332,12 +323,10 @@ def report(config, output, use, output_dir, accounts,
         config, use, debug, verbose, accounts, tags, policy,
         resource=resource, policy_tags=policy_tags)
 
-    resource_types = set()
-    for p in custodian_config.get('policies'):
-        resource_types.add(p['resource'])
+    resource_types = {p['resource'] for p in custodian_config.get('policies')}
     if len(resource_types) > 1:
         raise ValueError("can only report on one resource type at a time")
-    elif not len(custodian_config['policies']) > 0:
+    elif len(custodian_config['policies']) <= 0:
         raise ValueError("no matching policies found")
 
     records = []
@@ -393,12 +382,12 @@ def report(config, output, use, output_dir, accounts,
 
 def _get_env_creds(session, region):
     creds = session._session.get_credentials()
-    env = {}
-    env['AWS_ACCESS_KEY_ID'] = creds.access_key
-    env['AWS_SECRET_ACCESS_KEY'] = creds.secret_key
-    env['AWS_SESSION_TOKEN'] = creds.token
-    env['AWS_DEFAULT_REGION'] = region
-    return env
+    return {
+        'AWS_ACCESS_KEY_ID': creds.access_key,
+        'AWS_SECRET_ACCESS_KEY': creds.secret_key,
+        'AWS_SESSION_TOKEN': creds.token,
+        'AWS_DEFAULT_REGION': region,
+    }
 
 
 def run_account_script(account, region, output_dir, debug, script_args):
@@ -408,7 +397,7 @@ def run_account_script(account, region, output_dir, debug, script_args):
         return 1
 
     env = os.environ.copy()
-    env.update(_get_env_creds(session, region))
+    env |= _get_env_creds(session, region)
 
     log.info("running script on account:%s region:%s script: `%s`",
              account['name'], region, " ".join(script_args))
@@ -443,7 +432,7 @@ def run_script(config, output_dir, accounts, tags, region, echo, serial, script_
         config, None, serial, True, accounts, tags, (), ())
 
     if echo:
-        print("command to run: `%s`" % (" ".join(script_args)))
+        print(f'command to run: `{" ".join(script_args)}`')
         return
 
     # Support fully quoted scripts, which are common to avoid parameter
@@ -478,20 +467,21 @@ def run_script(config, output_dir, accounts, tags, region, echo, serial, script_
 
 
 def accounts_iterator(config):
-    for a in config.get('accounts', ()):
-        yield a
+    yield from config.get('accounts', ())
     for a in config.get('subscriptions', ()):
-        d = {'account_id': a['subscription_id'],
-             'name': a.get('name', a['subscription_id']),
-             'regions': ['global'],
-             'tags': a.get('tags', ())}
-        yield d
+        yield {
+            'account_id': a['subscription_id'],
+            'name': a.get('name', a['subscription_id']),
+            'regions': ['global'],
+            'tags': a.get('tags', ()),
+        }
     for a in config.get('projects', ()):
-        d = {'account_id': a['project_id'],
-             'name': a.get('name', a['project_id']),
-             'regions': ['global'],
-             'tags': a.get('tags', ())}
-        yield d
+        yield {
+            'account_id': a['project_id'],
+            'name': a.get('name', a['project_id']),
+            'regions': ['global'],
+            'tags': a.get('tags', ()),
+        }
 
 
 def run_account(account, region, policies_config, output_path,
@@ -506,7 +496,9 @@ def run_account(account, region, policies_config, output_path,
     if '{' not in output_path:
         output_path = os.path.join(output_path, account['name'], region)
 
-    cache_path = os.path.join(cache_path, "%s-%s.cache" % (account['account_id'], region))
+    cache_path = os.path.join(
+        cache_path, f"{account['account_id']}-{region}.cache"
+    )
 
     config = Config.empty(
         region=region, cache=cache_path,
@@ -645,7 +637,7 @@ def run(config, use, output_dir, accounts, tags, region,
             if not account_region_success:
                 success = False
 
-    log.info("Policy resource counts %s" % policy_counts)
+    log.info(f"Policy resource counts {policy_counts}")
 
     if not success:
         sys.exit(1)

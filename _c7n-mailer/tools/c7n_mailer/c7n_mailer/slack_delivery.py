@@ -46,7 +46,7 @@ class SlackDelivery(object):
         for target in sqs_message.get('action', ()).get('to'):
             if target == 'slack://owners':
                 to_addrs_to_resources_map = \
-                    self.email_handler.get_email_to_addrs_to_resources_map(sqs_message)
+                        self.email_handler.get_email_to_addrs_to_resources_map(sqs_message)
                 for to_addrs, resources in six.iteritems(to_addrs_to_resources_map):
 
                     resolved_addrs = self.retrieve_user_im(list(to_addrs))
@@ -75,7 +75,8 @@ class SlackDelivery(object):
                     self.logger, 'slack_template', 'slack_default',
                     self.config['templates_folders'])
                 self.logger.debug(
-                    "Generating message for webhook %s." % self.config.get('slack_webhook'))
+                    f"Generating message for webhook {self.config.get('slack_webhook')}."
+                )
             elif target.startswith('slack://') and is_email(target.split('slack://', 1)[1]):
                 resolved_addrs = self.retrieve_user_im([target.split('slack://', 1)[1]])
                 for address, slack_target in resolved_addrs.items():
@@ -95,8 +96,7 @@ class SlackDelivery(object):
                 result = next((item for item in resource.get('Tags', [])
                                if item["Key"] == tag_name), None)
                 if not result:
-                    self.logger.debug(
-                        "No %s tag found in resource." % tag_name)
+                    self.logger.debug(f"No {tag_name} tag found in resource.")
                     continue
 
                 resolved_addrs = result['Value']
@@ -110,13 +110,8 @@ class SlackDelivery(object):
 
     def slack_handler(self, sqs_message, slack_messages):
         for key, payload in slack_messages.items():
-            self.logger.info("Sending account:%s policy:%s %s:%s slack:%s to %s" % (
-                sqs_message.get('account', ''),
-                sqs_message['policy']['name'],
-                sqs_message['policy']['resource'],
-                str(len(sqs_message['resources'])),
-                sqs_message['action'].get('slack_template', 'slack_default'),
-                key)
+            self.logger.info(
+                f"Sending account:{sqs_message.get('account', '')} policy:{sqs_message['policy']['name']} {sqs_message['policy']['resource']}:{len(sqs_message['resources'])} slack:{sqs_message['action'].get('slack_template', 'slack_default')} to {key}"
             )
 
             self.send_slack_msg(key, payload)
@@ -129,33 +124,20 @@ class SlackDelivery(object):
 
         for address in email_addresses:
             if self.caching and self.caching.get(address):
-                self.logger.debug('Got Slack metadata from cache for: %s' % address)
+                self.logger.debug(f'Got Slack metadata from cache for: {address}')
                 list[address] = self.caching.get(address)
                 continue
 
             response = requests.post(
                 url='https://slack.com/api/users.lookupByEmail',
                 data={'email': address},
-                headers={'Content-Type': 'application/x-www-form-urlencoded',
-                         'Authorization': 'Bearer %s' % self.config.get('slack_token')}).json()
+                headers={
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Authorization': f"Bearer {self.config.get('slack_token')}",
+                },
+            ).json()
 
-            if not response["ok"]:
-                if "headers" in response.keys() and "Retry-After" in response["headers"]:
-                    self.logger.info(
-                        "Slack API rate limiting. Waiting %d seconds",
-                        int(response.headers['retry-after']))
-                    time.sleep(int(response.headers['Retry-After']))
-                    continue
-                elif response["error"] == "invalid_auth":
-                    raise Exception("Invalid Slack token.")
-                elif response["error"] == "users_not_found":
-                    self.logger.info("Slack user ID for email address %s not found.", address)
-                    if self.caching:
-                        self.caching.set(address, {})
-                    continue
-                else:
-                    self.logger.warning("Slack Response: {}".format(response))
-            else:
+            if response["ok"]:
                 slack_user_id = response['user']['id']
                 if 'enterprise_user' in response['user'].keys():
                     slack_user_id = response['user']['enterprise_user']['id']
@@ -167,6 +149,20 @@ class SlackDelivery(object):
 
                 list[address] = slack_user_id
 
+            elif "headers" in response.keys() and "Retry-After" in response["headers"]:
+                self.logger.info(
+                    "Slack API rate limiting. Waiting %d seconds",
+                    int(response.headers['retry-after']))
+                time.sleep(int(response.headers['Retry-After']))
+            elif response["error"] == "invalid_auth":
+                raise Exception("Invalid Slack token.")
+            elif response["error"] == "users_not_found":
+                self.logger.info("Slack user ID for email address %s not found.", address)
+                if self.caching:
+                    self.caching.set(address, {})
+                continue
+            else:
+                self.logger.warning(f"Slack Response: {response}")
         return list
 
     def send_slack_msg(self, key, message_payload):
@@ -180,8 +176,11 @@ class SlackDelivery(object):
             response = requests.post(
                 url='https://slack.com/api/chat.postMessage',
                 data=message_payload,
-                headers={'Content-Type': 'application/json;charset=utf-8',
-                         'Authorization': 'Bearer %s' % self.config.get('slack_token')})
+                headers={
+                    'Content-Type': 'application/json;charset=utf-8',
+                    'Authorization': f"Bearer {self.config.get('slack_token')}",
+                },
+            )
 
         response_json = response.json()
         if response.status_code == 429 and "Retry-After" in response.headers:

@@ -97,10 +97,12 @@ class CosmosDBChildResource(ChildResourceManager):
             parent_resource['resourceGroup'],
             parent_resource.get('name'),
             self.get_parent_manager().get_client())
-        data_client = CosmosClient(
-            url_connection=parent_resource.get('properties').get('documentEndpoint'),
-            auth={'masterKey': key})
-        return data_client
+        return CosmosClient(
+            url_connection=parent_resource.get('properties').get(
+                'documentEndpoint'
+            ),
+            auth={'masterKey': key},
+        )
 
 
 @resources.register('cosmosdb-database')
@@ -193,11 +195,9 @@ class OfferHelper(object):
     def group_by_account(resources):
         # Group all resources by account because offers are queried per account not per collection
         account_sorted = sorted(resources, key=OfferHelper.account_key)
-        account_grouped = [list(it) for k, it in groupby(
-            account_sorted,
-            OfferHelper.account_key)]
-
-        return account_grouped
+        return [
+            list(it) for k, it in groupby(account_sorted, OfferHelper.account_key)
+        ]
 
     @staticmethod
     def get_cosmos_data_client(resources, manager, readonly=True):
@@ -212,9 +212,7 @@ class OfferHelper(object):
             readonly
         )
 
-        # Build a data client
-        data_client = CosmosClient(url_connection=url_connection, auth={'masterKey': key})
-        return data_client
+        return CosmosClient(url_connection=url_connection, auth={'masterKey': key})
 
     @staticmethod
     def populate_offer_data(resources, manager, data_client=None):
@@ -242,13 +240,13 @@ class OfferHelper(object):
 
         # Process database groups in parallel
         with executor_factory(max_workers=3) as w:
-            for resource_set in account_grouped:
-                futures.append(w.submit(process_resource_set, resource_set))
-
+            futures.extend(
+                w.submit(process_resource_set, resource_set)
+                for resource_set in account_grouped
+            )
             for f in as_completed(futures):
                 if f.exception():
-                    log.warning(
-                        "CosmosDB offer processing error: %s" % f.exception())
+                    log.warning(f"CosmosDB offer processing error: {f.exception()}")
                     continue
                 else:
                     results.extend(f.result())
@@ -399,6 +397,4 @@ class CosmosDBFirewallRulesFilter(FirewallRulesFilter):
 
         ip_range_string = resource['properties']['ipRangeFilter']
 
-        resource_rules = IPSet(ip_range_string.split(','))
-
-        return resource_rules
+        return IPSet(ip_range_string.split(','))

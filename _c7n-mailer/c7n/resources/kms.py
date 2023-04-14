@@ -140,7 +140,7 @@ class KMSCrossAccountAccessFilter(CrossAccountAccessFilter):
 
         def _augment(r):
             key_id = r.get('TargetKeyId', r.get('KeyId'))
-            assert key_id, "Invalid key resources %s" % r
+            assert key_id, f"Invalid key resources {r}"
             r['Policy'] = client.get_key_policy(
                 KeyId=key_id, PolicyName='default')['Policy']
             return r
@@ -177,17 +177,15 @@ class GrantCount(Filter):
 
     def process(self, keys, event=None):
         client = local_session(self.manager.session_factory).client('kms')
-        results = []
-        for k in keys:
-            results.append(self.process_key(client, k))
+        results = [self.process_key(client, k) for k in keys]
         return [r for r in results if r]
 
     def process_key(self, client, key):
         p = client.get_paginator('list_grants')
         p.PAGE_ITERATOR_CLS = RetryPageIterator
-        grant_count = 0
-        for rp in p.paginate(KeyId=key['TargetKeyId']):
-            grant_count += len(rp['Grants'])
+        grant_count = sum(
+            len(rp['Grants']) for rp in p.paginate(KeyId=key['TargetKeyId'])
+        )
         key['GrantCount'] = grant_count
 
         grant_threshold = self.data.get('min', 5)
@@ -250,7 +248,7 @@ class RemovePolicyStatement(RemovePolicyBase):
         client = local_session(self.manager.session_factory).client('kms')
         for r in resources:
             key_id = r.get('TargetKeyId', r.get('KeyId'))
-            assert key_id, "Invalid key resources %s" % r
+            assert key_id, f"Invalid key resources {r}"
             try:
                 results += filter(None, [self.process_resource(client, r, key_id)])
             except Exception:

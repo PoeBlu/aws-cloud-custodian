@@ -23,10 +23,7 @@ ROLE_TEMPLATE = "arn:aws:iam::{Id}:role/OrganizationAccountAccessRole"
 
 
 @click.command()
-@click.option(
-    '--role',
-    default=ROLE_TEMPLATE,
-    help="Role template for accounts in the config, defaults to %s" % ROLE_TEMPLATE)
+@click.option('--role', default=ROLE_TEMPLATE, help=f"Role template for accounts in the config, defaults to {ROLE_TEMPLATE}")
 @click.option('--ou', multiple=True, default=["/"],
               help="Only export the given subtrees of an organization")
 @click.option('-r', '--regions', multiple=True,
@@ -53,11 +50,11 @@ def main(role, ou, assume, profile, output, regions, active):
 
     results = []
     for a in accounts:
-        tags = []
         path_parts = a['Path'].strip('/').split('/')
-        for idx, _ in enumerate(path_parts):
-            tags.append("path:/%s" % "/".join(path_parts[:idx + 1]))
-
+        tags = [
+            f'path:/{"/".join(path_parts[:idx + 1])}'
+            for idx, _ in enumerate(path_parts)
+        ]
         ainfo = {
             'account_id': a['Id'],
             'email': a['Email'],
@@ -111,7 +108,7 @@ def get_sub_ous(client, ou):
     for sub_ou in ou_pager.paginate(
             ParentId=ou['Id']).build_full_result().get(
                 'OrganizationalUnits'):
-        sub_ou['Path'] = "/%s/%s" % (ou['Path'].strip('/'), sub_ou['Name'])
+        sub_ou['Path'] = f"/{ou['Path'].strip('/')}/{sub_ou['Name']}"
         results.extend(get_sub_ous(client, sub_ou))
     return results
 
@@ -128,10 +125,7 @@ def get_accounts_for_ou(client, ou, active, recursive=True):
             ParentId=ou['Id']).build_full_result().get(
                 'Accounts', []):
             a['Path'] = ou['Path']
-            if active:
-                if a['Status'] == 'ACTIVE':
-                    results.append(a)
-            else:
+            if active and a['Status'] == 'ACTIVE' or not active:
                 results.append(a)
     return results
 

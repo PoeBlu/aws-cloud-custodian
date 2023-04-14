@@ -88,7 +88,11 @@ def universal_augment(self, resources):
 
     # For global resources, tags don't populate in the get_resources call
     # unless the call is being made to us-east-1
-    region = getattr(self.resource_type, 'global_resource', None) and 'us-east-1' or self.region
+    region = (
+        'us-east-1'
+        if getattr(self.resource_type, 'global_resource', None)
+        else self.region
+    )
 
     client = utils.local_session(
         self.session_factory).client('resourcegroupstaggingapi', region_name=region)
@@ -99,7 +103,7 @@ def universal_augment(self, resources):
     paginator.PAGE_ITERATOR_CLS = RetryPageIterator
 
     m = self.get_model()
-    resource_type = "%s:%s" % (m.arn_service or m.service, m.arn_type)
+    resource_type = f"{m.arn_service or m.service}:{m.arn_type}"
 
     resource_tag_map_list = list(itertools.chain(
         *[p['ResourceTagMappingList'] for p in paginator.paginate(
@@ -121,11 +125,10 @@ def _common_tag_processer(executor_factory, batch_size, concurrency, client,
 
     error = None
     with executor_factory(max_workers=concurrency) as w:
-        futures = []
-        for resource_set in utils.chunks(resources, size=batch_size):
-            futures.append(
-                w.submit(process_resource_set, client, resource_set, tags))
-
+        futures = [
+            w.submit(process_resource_set, client, resource_set, tags)
+            for resource_set in utils.chunks(resources, size=batch_size)
+        ]
         for f in as_completed(futures):
             if f.exception():
                 error = f.exception()
@@ -225,8 +228,7 @@ class TagTrim(Action):
             candidates = list(sorted(candidates))[:remove]
 
         if not candidates:
-            self.log.warning(
-                "Could not find any candidates to trim %s" % i[self.id_key])
+            self.log.warning(f"Could not find any candidates to trim {i[self.id_key]}")
             return
 
         self.process_tag_removal(i, candidates)
@@ -292,14 +294,15 @@ class TagActionFilter(Filter):
         op = self.data.get('op')
         if self.manager and op not in self.manager.action_registry.keys():
             raise PolicyValidationError(
-                "Invalid marked-for-op op:%s in %s" % (op, self.manager.data))
+                f"Invalid marked-for-op op:{op} in {self.manager.data}"
+            )
 
-        tz = tzutil.gettz(Time.TZ_ALIASES.get(self.data.get('tz', 'utc')))
-        if not tz:
+        if tz := tzutil.gettz(Time.TZ_ALIASES.get(self.data.get('tz', 'utc'))):
+            return self
+        else:
             raise PolicyValidationError(
-                "Invalid timezone specified '%s' in %s" % (
-                    self.data.get('tz'), self.manager.data))
-        return self
+                f"Invalid timezone specified '{self.data.get('tz')}' in {self.manager.data}"
+            )
 
     def __call__(self, i):
         tag = self.data.get('tag', DEFAULT_TAG)
@@ -308,12 +311,7 @@ class TagActionFilter(Filter):
         skew_hours = self.data.get('skew_hours', 0)
         tz = tzutil.gettz(Time.TZ_ALIASES.get(self.data.get('tz', 'utc')))
 
-        v = None
-        for n in i.get('Tags', ()):
-            if n['Key'] == tag:
-                v = n['Value']
-                break
-
+        v = next((n['Value'] for n in i.get('Tags', ()) if n['Key'] == tag), None)
         if v is None:
             return False
         if ':' not in v or '@' not in v:
@@ -328,8 +326,7 @@ class TagActionFilter(Filter):
         try:
             action_date = parse(action_date_str)
         except Exception:
-            self.log.warning("could not parse tag:%s value:%s on %s" % (
-                tag, v, i['InstanceId']))
+            self.log.warning(f"could not parse tag:{tag} value:{v} on {i['InstanceId']}")
 
         if self.current_date is None:
             self.current_date = datetime.now()
@@ -396,8 +393,8 @@ class Tag(Action):
     def validate(self):
         if self.data.get('key') and self.data.get('tag'):
             raise PolicyValidationError(
-                "Can't specify both key and tag, choose one in %s" % (
-                    self.manager.data,))
+                f"Can't specify both key and tag, choose one in {self.manager.data}"
+            )
         return self
 
     def process(self, resources):
@@ -517,23 +514,25 @@ class RenameTag(Action):
         - Delete old tag
         - Create new tag & assign stored value
         """
-        self.log.info("Renaming tag on %s instances" % (len(resource_set)))
+        self.log.info(f"Renaming tag on {len(resource_set)} instances")
         old_key = self.data.get('old_key')
         new_key = self.data.get('new_key')
 
-        # We have a preference to creating the new tag when possible first
-        resource_ids = [r[self.id_key] for r in resource_set if len(
-            r.get('Tags', [])) < self.tag_count_max]
-        if resource_ids:
+        if resource_ids := [
+            r[self.id_key]
+            for r in resource_set
+            if len(r.get('Tags', [])) < self.tag_count_max
+        ]:
             self.create_tag(client, resource_ids, new_key, tag_value)
 
         self.delete_tag(
             client, [r[self.id_key] for r in resource_set], old_key, tag_value)
 
-        # For resources with 50 tags, we need to delete first and then create.
-        resource_ids = [r[self.id_key] for r in resource_set if len(
-            r.get('Tags', [])) > self.tag_count_max - 1]
-        if resource_ids:
+        if resource_ids := [
+            r[self.id_key]
+            for r in resource_set
+            if len(r.get('Tags', [])) > self.tag_count_max - 1
+        ]:
             self.create_tag(client, resource_ids, new_key, tag_value)
 
     def create_set(self, instances):
@@ -548,28 +547,25 @@ class RenameTag(Action):
 
     def filter_resources(self, resources):
         old_key = self.data.get('old_key', None)
-        res = 0
-        for r in resources:
+        for res, r in enumerate(resources):
             tags = {t['Key']: t['Value'] for t in r.get('Tags', [])}
             if old_key not in tags.keys():
                 resources.pop(res)
-            res += 1
         return resources
 
     def process(self, resources):
         count = len(resources)
         resources = self.filter_resources(resources)
-        self.log.info(
-            "Filtered from %s resources to %s" % (count, len(resources)))
+        self.log.info(f"Filtered from {count} resources to {len(resources)}")
         self.id_key = self.manager.get_model().id
         resource_set = self.create_set(resources)
 
         client = self.get_client()
         with self.executor_factory(max_workers=3) as w:
-            futures = []
-            for r in resource_set:
-                futures.append(
-                    w.submit(self.process_rename, client, r, resource_set[r]))
+            futures = [
+                w.submit(self.process_rename, client, r, resource_set[r])
+                for r in resource_set
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
@@ -627,15 +623,15 @@ class TagDelayedAction(Action):
         op = self.data.get('op')
         if self.manager and op not in self.manager.action_registry.keys():
             raise PolicyValidationError(
-                "mark-for-op specifies invalid op:%s in %s" % (
-                    op, self.manager.data))
+                f"mark-for-op specifies invalid op:{op} in {self.manager.data}"
+            )
 
         self.tz = tzutil.gettz(
             Time.TZ_ALIASES.get(self.data.get('tz', 'utc')))
         if not self.tz:
             raise PolicyValidationError(
-                "Invalid timezone specified %s in %s" % (
-                    self.tz, self.manager.data))
+                f"Invalid timezone specified {self.tz} in {self.manager.data}"
+            )
         return self
 
     def generate_timestamp(self, days, hours):
@@ -644,12 +640,11 @@ class TagDelayedAction(Action):
             # maintains default value of days being 4 if nothing is provided
             days = 4
         action_date = (n + timedelta(days=days, hours=hours))
-        if hours > 0:
-            action_date_string = action_date.strftime('%Y/%m/%d %H%M %Z')
-        else:
-            action_date_string = action_date.strftime('%Y/%m/%d')
-
-        return action_date_string
+        return (
+            action_date.strftime('%Y/%m/%d %H%M %Z')
+            if hours > 0
+            else action_date.strftime('%Y/%m/%d')
+        )
 
     def get_config_values(self):
         d = {
@@ -760,8 +755,7 @@ class NormalizeTag(Action):
         - Transform Tag value
         - Assign new value for key
         """
-        self.log.info("Transforming tag value on %s instances" % (
-            len(resource_set)))
+        self.log.info(f"Transforming tag value on {len(resource_set)} instances")
         key = self.data.get('key')
 
         c = utils.local_session(self.manager.session_factory).client('ec2')
@@ -784,19 +778,16 @@ class NormalizeTag(Action):
 
     def filter_resources(self, resources):
         key = self.data.get('key', None)
-        res = 0
-        for r in resources:
+        for res, r in enumerate(resources):
             tags = {t['Key']: t['Value'] for t in r.get('Tags', [])}
             if key not in tags.keys():
                 resources.pop(res)
-            res += 1
         return resources
 
     def process(self, resources):
         count = len(resources)
         resources = self.filter_resources(resources)
-        self.log.info(
-            "Filtered from %s resources to %s" % (count, len(resources)))
+        self.log.info(f"Filtered from {count} resources to {len(resources)}")
         self.id_key = self.manager.get_model().id
         resource_set = self.create_set(resources)
         with self.executor_factory(max_workers=3) as w:
@@ -1006,7 +997,7 @@ class CopyRelatedResourceTag(Tag):
         related_resource = self.data['resource']
         if related_resource not in aws_resources.keys():
             raise PolicyValidationError(
-                "Error: Invalid resource type selected: %s" % related_resource
+                f"Error: Invalid resource type selected: {related_resource}"
             )
         # ideally should never raise here since we shouldn't be applying this
         # action to a resource if it doesn't have a tag action implemented
@@ -1018,9 +1009,14 @@ class CopyRelatedResourceTag(Tag):
 
     def process(self, resources):
         related_resources = list(
-            zip(jmespath.search('[].[%s || "c7n:NotFound"]|[]' % self.data['key'], resources),
-                resources))
-        related_ids = set([r[0] for r in related_resources])
+            zip(
+                jmespath.search(
+                    f"""[].[{self.data['key']} || "c7n:NotFound"]|[]""", resources
+                ),
+                resources,
+            )
+        )
+        related_ids = {r[0] for r in related_resources}
         related_ids.discard('c7n:NotFound')
         related_tag_map = self.get_resource_tag_map(self.data['resource'], related_ids)
 
@@ -1082,10 +1078,10 @@ class CopyRelatedResourceTag(Tag):
         }
 
     @classmethod
-    def register_resources(klass, registry, resource_class):
+    def register_resources(cls, registry, resource_class):
         if not resource_class.action_registry.get('tag'):
             return
-        resource_class.action_registry.register('copy-related-tag', klass)
+        resource_class.action_registry.register('copy-related-tag', cls)
 
 
 aws_resources.subscribe(
@@ -1118,18 +1114,18 @@ def universal_retry(method, ResourceARNList, **kw):
 
         for f_arn in failures:
             error_code = failures[f_arn]['ErrorCode']
-            if error_code == 'ThrottlingException':
-                throttles.add(f_arn)
-            elif error_code == 'ResourceNotFoundException':
+            if error_code == 'ResourceNotFoundException':
                 continue
+            elif error_code == 'ThrottlingException':
+                throttles.add(f_arn)
             else:
                 errors[f_arn] = error_code
 
         if errors:
-            raise Exception("Resource Tag Errors %s" % (errors))
+            raise Exception(f"Resource Tag Errors {errors}")
 
         if idx == max_attempts - 1:
-            raise Exception("Resource Tag Throttled %s" % (", ".join(throttles)))
+            raise Exception(f'Resource Tag Throttled {", ".join(throttles)}')
 
         time.sleep(delay)
         ResourceARNList = list(throttles)
@@ -1159,27 +1155,19 @@ def coalesce_copy_user_tags(resource, copy_tags, user_tags):
     to copy all tags from the resource.
     """
 
-    assert isinstance(copy_tags, bool) or isinstance(copy_tags, list)
-    assert isinstance(user_tags, dict) or isinstance(user_tags, list)
+    assert isinstance(copy_tags, (bool, list))
+    assert isinstance(user_tags, (dict, list))
 
     r_tags = resource.get('Tags', [])
 
     if isinstance(copy_tags, list):
-        if '*' in copy_tags:
-            copy_keys = set([t['Key'] for t in r_tags])
-        else:
-            copy_keys = set(copy_tags)
-
+        copy_keys = {t['Key'] for t in r_tags} if '*' in copy_tags else set(copy_tags)
     if isinstance(copy_tags, bool):
-        if copy_tags is True:
-            copy_keys = set([t['Key'] for t in r_tags])
-        else:
-            copy_keys = set()
-
+        copy_keys = {t['Key'] for t in r_tags} if copy_tags is True else set()
     if isinstance(user_tags, dict):
         user_tags = [{'Key': k, 'Value': v} for k, v in user_tags.items()]
 
-    user_keys = set([t['Key'] for t in user_tags])
+    user_keys = {t['Key'] for t in user_tags}
     tags_diff = list(copy_keys.difference(user_keys))
     resource_tags_to_copy = [t for t in r_tags if t['Key'] in tags_diff]
     user_tags.extend(resource_tags_to_copy)

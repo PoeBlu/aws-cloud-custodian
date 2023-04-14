@@ -131,8 +131,10 @@ class DeleteDevEndpoint(BaseAction):
         futures = []
         client = local_session(self.manager.session_factory).client('glue')
         with self.executor_factory(max_workers=2) as w:
-            for endpoint_set in chunks(resources, size=5):
-                futures.append(w.submit(self.delete_dev_endpoint, client, endpoint_set))
+            futures.extend(
+                w.submit(self.delete_dev_endpoint, client, endpoint_set)
+                for endpoint_set in chunks(resources, size=5)
+            )
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(

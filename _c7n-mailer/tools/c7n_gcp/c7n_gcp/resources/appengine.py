@@ -34,8 +34,9 @@ class AppEngineApp(QueryResourceManager):
         @staticmethod
         def get(client, resource_info):
             return client.execute_query(
-                'get', {'appsId': re.match('apps/(.*)',
-                    resource_info['resourceName']).group(1)})
+                'get',
+                {'appsId': re.match('apps/(.*)', resource_info['resourceName'])[1]},
+            )
 
     def get_resource_query(self):
         return {'appsId': local_session(self.session_factory).get_default_project()}
@@ -47,8 +48,11 @@ class AppEngineCertificate(ChildResourceManager):
     https://cloud.google.com/appengine/docs/admin-api/reference/rest/v1/apps.authorizedCertificates
     """
     def _get_parent_resource_info(self, child_instance):
-        return {'resourceName': re.match(
-            '(apps/.*?)/authorizedCertificates/.*', child_instance['name']).group(1)}
+        return {
+            'resourceName': re.match(
+                '(apps/.*?)/authorizedCertificates/.*', child_instance['name']
+            )[1]
+        }
 
     class resource_type(ChildTypeInfo):
         service = 'appengine'
@@ -98,8 +102,11 @@ class AppEngineDomainMapping(ChildResourceManager):
     https://cloud.google.com/appengine/docs/admin-api/reference/rest/v1/apps.domainMappings
     """
     def _get_parent_resource_info(self, child_instance):
-        return {'resourceName': re.match(
-            '(apps/.*?)/domainMappings/.*', child_instance['name']).group(1)}
+        return {
+            'resourceName': re.match(
+                '(apps/.*?)/domainMappings/.*', child_instance['name']
+            )[1]
+        }
 
     class resource_type(ChildTypeInfo):
         service = 'appengine'
@@ -129,8 +136,9 @@ class AppEngineFirewallIngressRule(ChildResourceManager):
     https://cloud.google.com/appengine/docs/admin-api/reference/rest/v1/apps.firewall.ingressRules
     """
     def _get_parent_resource_info(self, child_instance):
-        return {'resourceName': 'apps/%s' %
-                                local_session(self.session_factory).get_default_project()}
+        return {
+            'resourceName': f'apps/{local_session(self.session_factory).get_default_project()}'
+        }
 
     class resource_type(ChildTypeInfo):
         service = 'appengine'

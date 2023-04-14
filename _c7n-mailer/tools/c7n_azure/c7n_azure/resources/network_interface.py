@@ -90,10 +90,9 @@ class EffectiveRouteTableFilter(ValueFilter):
                     )
 
                     resource['routes'] = route_table.serialize()
-                    filtered_effective_route_table = super(EffectiveRouteTableFilter, self)\
-                        .process([resource], event)
-
-                    if filtered_effective_route_table:
+                    if filtered_effective_route_table := super(
+                        EffectiveRouteTableFilter, self
+                    ).process([resource], event):
                         matched.append(resource)
 
             except Exception as error:

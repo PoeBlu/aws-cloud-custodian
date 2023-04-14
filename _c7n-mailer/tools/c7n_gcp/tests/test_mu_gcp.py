@@ -40,12 +40,12 @@ class FunctionTest(BaseTest):
         if not events:
             assert factory
             events = [mu.HTTPEvent(factory)]
-        config = dict(
-            name="custodian-dev",
-            labels=[],
-            runtime='python37',
-            events=events)
-        config.update(kw)
+        config = (
+            dict(
+                name="custodian-dev", labels=[], runtime='python37', events=events
+            )
+            | kw
+        )
         archive = mu.custodian_archive()
         archive.close()
         return mu.CloudFunction(config, archive)
@@ -125,8 +125,10 @@ class FunctionTest(BaseTest):
         sched_client = session.client('cloudscheduler', 'v1beta1', 'projects.locations.jobs')
         job_v1 = sched_client.execute_query(
             'get',
-            {'name': 'projects/{}/locations/{}/jobs/{}'.format(
-                project_id, region, 'custodian-auto-gcp-find-instances')})
+            {
+                'name': f'projects/{project_id}/locations/{region}/jobs/custodian-auto-gcp-find-instances'
+            },
+        )
 
         p = self.load_policy({
             'name': 'gcp-find-instances',
@@ -137,8 +139,10 @@ class FunctionTest(BaseTest):
 
         job_v2 = sched_client.execute_query(
             'get',
-            {'name': 'projects/{}/locations/{}/jobs/{}'.format(
-                project_id, region, 'custodian-auto-gcp-find-instances')})
+            {
+                'name': f'projects/{project_id}/locations/{region}/jobs/custodian-auto-gcp-find-instances'
+            },
+        )
         self.assertEqual(job_v1['schedule'], 'every 3 hours')
         self.assertEqual(job_v2['schedule'], 'every 2 hours')
 
@@ -161,18 +165,23 @@ class FunctionTest(BaseTest):
 
         # check function exists
         func_info = func_client.execute_command(
-            'get', {'name': 'projects/{}/locations/{}/functions/instance-off'.format(
-                project_id, region)})
+            'get',
+            {
+                'name': f'projects/{project_id}/locations/{region}/functions/instance-off'
+            },
+        )
         self.assertEqual(
-            "https://{}-{}.cloudfunctions.net/{}".format(
-                region, project_id, 'instance-off'),
-            func_info['httpsTrigger']['url'])
+            f"https://{region}-{project_id}.cloudfunctions.net/instance-off",
+            func_info['httpsTrigger']['url'],
+        )
 
         sched_client = session.client('cloudscheduler', 'v1beta1', 'projects.locations.jobs')
         job = sched_client.execute_query(
             'get',
-            {'name': 'projects/{}/locations/{}/jobs/{}'.format(
-                project_id, region, 'custodian-auto-instance-off')})
+            {
+                'name': f'projects/{project_id}/locations/{region}/jobs/custodian-auto-instance-off'
+            },
+        )
         self.assertEqual(job['schedule'], 'every 2 hours')
         self.assertEqual(job['timeZone'], 'Etc/UTC')
 
@@ -223,30 +232,38 @@ class FunctionTest(BaseTest):
 
         # check function exists
         func_info = func_client.execute_command(
-            'get', {'name': 'projects/{}/locations/{}/functions/topic-created'.format(
-                project_id, region)})
+            'get',
+            {
+                'name': f'projects/{project_id}/locations/{region}/functions/topic-created'
+            },
+        )
         self.assertEqual(
             func_info['eventTrigger']['eventType'],
             'providers/cloud.pubsub/eventTypes/topic.publish')
         self.assertEqual(
             func_info['eventTrigger']['resource'],
-            'projects/{}/topics/custodian-auto-audit-topic-created'.format(
-                project_id))
+            f'projects/{project_id}/topics/custodian-auto-audit-topic-created',
+        )
 
         # check sink exists
         sink = sink_client.execute_command(
-            'get', {'sinkName': 'projects/{}/sinks/custodian-auto-audit-topic-created'.format(
-                project_id)})
+            'get',
+            {
+                'sinkName': f'projects/{project_id}/sinks/custodian-auto-audit-topic-created'
+            },
+        )
         self.assertEqual(
             sink['destination'],
-            'pubsub.googleapis.com/projects/{}/topics/custodian-auto-audit-topic-created'.format(
-                project_id))
+            f'pubsub.googleapis.com/projects/{project_id}/topics/custodian-auto-audit-topic-created',
+        )
 
         # check the topic iam policy
         topic_policy = pubsub_client.execute_command(
-            'getIamPolicy', {
-                'resource': 'projects/{}/topics/custodian-auto-audit-topic-created'.format(
-                    project_id)})
+            'getIamPolicy',
+            {
+                'resource': f'projects/{project_id}/topics/custodian-auto-audit-topic-created'
+            },
+        )
         self.assertEqual(
             topic_policy['bindings'],
             [{u'role': u'roles/pubsub.publisher', u'members': [sink['writerIdentity']]}])

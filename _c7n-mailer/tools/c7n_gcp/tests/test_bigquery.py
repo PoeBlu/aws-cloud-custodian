@@ -66,7 +66,7 @@ class BigQueryJobTest(BaseTest):
         self.assertEqual(job[0]['jobReference']['jobId'], job_id)
         self.assertEqual(job[0]['jobReference']['location'], location)
         self.assertEqual(job[0]['jobReference']['projectId'], project_id)
-        self.assertEqual(job[0]['id'], "{}:{}.{}".format(project_id, location, job_id))
+        self.assertEqual(job[0]['id'], f"{project_id}:{location}.{job_id}")
 
 
 class BigQueryProjectTest(BaseTest):

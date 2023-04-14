@@ -116,6 +116,6 @@ class PluginRegistry(object):
             from pkg_resources import iter_entry_points
         except ImportError:
             return
-        for ep in iter_entry_points(group="custodian.%s" % self.plugin_type):
+        for ep in iter_entry_points(group=f"custodian.{self.plugin_type}"):
             f = ep.load()
             f()

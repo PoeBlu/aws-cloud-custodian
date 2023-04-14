@@ -134,8 +134,7 @@ class KeyVaultFirewallRulesFilter(FirewallRulesFilter):
 
         ip_rules = resource['properties']['networkAcls']['ipRules']
 
-        resource_rules = IPSet([r['value'] for r in ip_rules])
-        return resource_rules
+        return IPSet([r['value'] for r in ip_rules])
 
 
 @KeyVault.filter_registry.register('whitelist')
@@ -162,32 +161,29 @@ class WhiteListFilter(Filter):
         if 'accessPolicies' not in i:
             client = self.manager.get_client()
             vault = client.vaults.get(i['resourceGroup'], i['name'])
-            # Retrieve access policies for the keyvaults
-            access_policies = []
-            for policy in vault.properties.access_policies:
-                access_policies.append({
+            access_policies = [
+                {
                     'tenantId': policy.tenant_id,
                     'objectId': policy.object_id,
                     'applicationId': policy.application_id,
                     'permissions': {
                         'keys': policy.permissions.keys,
                         'secrets': policy.permissions.secrets,
-                        'certificates': policy.permissions.certificates
-                    }
-                })
+                        'certificates': policy.permissions.certificates,
+                    },
+                }
+                for policy in vault.properties.access_policies
+            ]
             # Enhance access policies with displayName, aadType and
             # principalName if necessary
             if self.key in self.GRAPH_PROVIDED_KEYS:
                 i['accessPolicies'] = self._enhance_policies(access_policies)
 
-        # Ensure each policy is
-        #   - User is whitelisted
-        #   - Permissions don't exceed allowed permissions
-        for p in i['accessPolicies']:
-            if self.key not in p or p[self.key] not in self.users:
-                if not self.compare_permissions(p['permissions'], self.permissions):
-                    return False
-        return True
+        return not any(
+            (self.key not in p or p[self.key] not in self.users)
+            and not self.compare_permissions(p['permissions'], self.permissions)
+            for p in i['accessPolicies']
+        )
 
     @staticmethod
     def compare_permissions(user_permissions, permissions):
@@ -197,8 +193,8 @@ class WhiteListFilter(Filter):
                     # If user_permissions is not empty, but allowed permissions is empty -- Failed.
                     return False
                 # User lowercase to compare sets
-                lower_user_perm = set([x.lower() for x in user_permissions[v]])
-                lower_perm = set([x.lower() for x in permissions[v]])
+                lower_user_perm = {x.lower() for x in user_permissions[v]}
+                lower_perm = {x.lower() for x in permissions[v]}
                 if lower_user_perm.difference(lower_perm):
                     # If user has more permissions than allowed -- Failed
                     return False

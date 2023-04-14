@@ -143,13 +143,12 @@ def get_logger(debug=False):
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     logging.basicConfig(level=logging.INFO, format=log_format)
     logging.getLogger('botocore').setLevel(logging.WARNING)
-    if debug:
-        logging.getLogger('botocore').setLevel(logging.DEBUG)
-        debug_logger = logging.getLogger('custodian-mailer')
-        debug_logger.setLevel(logging.DEBUG)
-        return debug_logger
-    else:
+    if not debug:
         return logging.getLogger('custodian-mailer')
+    logging.getLogger('botocore').setLevel(logging.DEBUG)
+    debug_logger = logging.getLogger('custodian-mailer')
+    debug_logger.setLevel(logging.DEBUG)
+    return debug_logger
 
 
 def get_and_validate_mailer_config(args):
@@ -196,8 +195,7 @@ def main():
     default_templates = [path.abspath(path.join(module_dir, 'msg-templates')),
                          path.abspath(path.join(module_dir, '..', 'msg-templates')),
                          path.abspath('.')]
-    templates = args_dict.get('templates', None)
-    if templates:
+    if templates := args_dict.get('templates', None):
         default_templates.append(path.abspath(path.expanduser(path.expandvars(templates))))
 
     mailer_config['templates_folders'] = default_templates

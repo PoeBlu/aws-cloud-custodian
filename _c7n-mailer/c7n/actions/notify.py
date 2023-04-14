@@ -186,9 +186,9 @@ class Notify(BaseNotify):
         for batch in utils.chunks(resources, self.batch_size):
             message['resources'] = self.prepare_resources(batch)
             receipt = self.send_data_message(message)
-            self.log.info("sent message:%s policy:%s template:%s count:%s" % (
-                receipt, self.manager.data['name'],
-                self.data.get('template', 'default'), len(batch)))
+            self.log.info(
+                f"sent message:{receipt} policy:{self.manager.data['name']} template:{self.data.get('template', 'default')} count:{len(batch)}"
+            )
 
     def prepare_resources(self, resources):
         """Resources preparation for transport.
@@ -202,12 +202,8 @@ class Notify(BaseNotify):
         would be dynamically adjusting buffer size based on underlying
         transport.
         """
-        handler = getattr(self, "prepare_%s" % (
-            self.manager.type.replace('-', '_')),
-            None)
-        if handler is None:
-            return resources
-        return handler(resources)
+        handler = getattr(self, f"prepare_{self.manager.type.replace('-', '_')}", None)
+        return resources if handler is None else handler(resources)
 
     def prepare_launch_config(self, resources):
         for r in resources:
@@ -278,14 +274,12 @@ class Notify(BaseNotify):
             region = queue_arn_split[3]
             owner_id = queue_arn_split[4]
             queue_name = queue_arn_split[5]
-            queue_url = "https://sqs.%s.amazonaws.com/%s/%s" % (
-                region, owner_id, queue_name)
+            queue_url = f"https://sqs.{region}.amazonaws.com/{owner_id}/{queue_name}"
         else:
             region = self.manager.config.region
             owner_id = self.manager.config.account_id
             queue_name = queue
-            queue_url = "https://sqs.%s.amazonaws.com/%s/%s" % (
-                region, owner_id, queue_name)
+            queue_url = f"https://sqs.{region}.amazonaws.com/{owner_id}/{queue_name}"
         client = self.manager.session_factory(
             region=region, assume=self.assume_role).client('sqs')
         attrs = {

@@ -59,12 +59,11 @@ def process_key_event(event, context):
             result = retry(method, s3, key, bucket)
         except ClientError as e:
             # Ensure we know which key caused an issue
-            print("error %s:%s code:%s" % (
-                bucket, key['Key'], e.response['Error']))
+            print(f"error {bucket}:{key['Key']} code:{e.response['Error']}")
             raise
         if not result:
             return
-        print("remediated %s:%s" % (bucket, key['Key']))
+        print(f"remediated {bucket}:{key['Key']}")
 
 
 def process_event(event, context):

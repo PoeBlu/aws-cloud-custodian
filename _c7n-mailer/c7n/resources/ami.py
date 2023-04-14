@@ -65,8 +65,7 @@ class DescribeImageSource(DescribeSource):
             try:
                 return super(DescribeImageSource, self).get_resources(ids, cache)
             except ClientError as e:
-                bad_ami_ids = ErrorHandler.extract_bad_ami(e)
-                if bad_ami_ids:
+                if bad_ami_ids := ErrorHandler.extract_bad_ami(e):
                     for b in bad_ami_ids:
                         ids.remove(b)
                     continue
@@ -82,14 +81,14 @@ class ErrorHandler(object):
         msg = e.response['Error']['Message']
         error = e.response['Error']['Code']
         e_ami_ids = None
-        if error == 'InvalidAMIID.NotFound':
+        if error == 'InvalidAMIID.Malformed':
+            e_ami_ids = [msg[msg.find('"') + 1:msg.rfind('"')]]
+            log.warning(f"Image id malformed {e_ami_ids}")
+        elif error == 'InvalidAMIID.NotFound':
             e_ami_ids = [
                 e_ami_id.strip() for e_ami_id
                 in msg[msg.find("'[") + 2:msg.rfind("]'")].split(',')]
-            log.warning("Image not found %s" % e_ami_ids)
-        elif error == 'InvalidAMIID.Malformed':
-            e_ami_ids = [msg[msg.find('"') + 1:msg.rfind('"')]]
-            log.warning("Image id malformed %s" % e_ami_ids)
+            log.warning(f"Image not found {e_ami_ids}")
         return e_ami_ids
 
 
@@ -283,7 +282,11 @@ class ImageUnusedFilter(Filter):
     def _pull_asg_images(self):
         asgs = self.manager.get_resource_manager('asg').resources()
         image_ids = set()
-        lcfgs = set(a['LaunchConfigurationName'] for a in asgs if 'LaunchConfigurationName' in a)
+        lcfgs = {
+            a['LaunchConfigurationName']
+            for a in asgs
+            if 'LaunchConfigurationName' in a
+        }
         lcfg_mgr = self.manager.get_resource_manager('launch-config')
 
         if lcfgs:
@@ -299,7 +302,7 @@ class ImageUnusedFilter(Filter):
 
     def _pull_ec2_images(self):
         ec2_manager = self.manager.get_resource_manager('ec2')
-        return set([i['ImageId'] for i in ec2_manager.resources()])
+        return {i['ImageId'] for i in ec2_manager.resources()}
 
     def process(self, resources, event=None):
         images = self._pull_ec2_images().union(self._pull_asg_images())
@@ -327,8 +330,7 @@ class AmiCrossAccountFilter(CrossAccountAccessFilter):
                 ImageId=r['ImageId'],
                 Attribute='launchPermission')['LaunchPermissions']
             image_accounts = {a.get('Group') or a.get('UserId') for a in attrs}
-            delta_accounts = image_accounts.difference(accounts)
-            if delta_accounts:
+            if delta_accounts := image_accounts.difference(accounts):
                 r['c7n:CrossAccountViolations'] = list(delta_accounts)
                 results.append(r)
         return results
@@ -339,11 +341,10 @@ class AmiCrossAccountFilter(CrossAccountAccessFilter):
         accounts = self.get_accounts()
 
         with self.executor_factory(max_workers=2) as w:
-            futures = []
-            for resource_set in chunks(resources, 20):
-                futures.append(
-                    w.submit(
-                        self.process_resource_set, client, accounts, resource_set))
+            futures = [
+                w.submit(self.process_resource_set, client, accounts, resource_set)
+                for resource_set in chunks(resources, 20)
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(

@@ -52,8 +52,9 @@ class AWSLambda(query.QueryResourceManager):
             return DescribeLambda(self)
         elif source_type == 'config':
             return ConfigLambda(self)
-        raise ValueError("Unsupported source: %s for %s" % (
-            source_type, self.resource_type.config_type))
+        raise ValueError(
+            f"Unsupported source: {source_type} for {self.resource_type.config_type}"
+        )
 
 
 class DescribeLambda(query.DescribeSource):
@@ -331,7 +332,7 @@ class SetConcurrency(BaseAction):
 
     def validate(self):
         if self.data.get('expr', False) and not isinstance(self.data['value'], six.text_type):
-            raise ValueError("invalid value expression %s" % self.data['value'])
+            raise ValueError(f"invalid value expression {self.data['value']}")
         return self
 
     def process(self, functions):
@@ -349,7 +350,7 @@ class SetConcurrency(BaseAction):
                 fvalue = value.search(function)
                 if isinstance(fvalue, float):
                     fvalue = int(fvalue)
-                if isinstance(value, int) or isinstance(value, none_type):
+                if isinstance(value, (int, none_type)):
                     self.policy.log.warning(
                         "Function: %s Invalid expression value for concurrency: %s",
                         function['FunctionName'], fvalue)

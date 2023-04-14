@@ -60,10 +60,7 @@ def is_email(target):
     if target.startswith('slack://'):
         logger.debug("Slack payload, not an email.")
         return False
-    if parseaddr(target)[1] and '@' in target and '.' in target:
-        return True
-    else:
-        return False
+    return bool(parseaddr(target)[1] and '@' in target and '.' in target)
 
 
 def priority_header_is_valid(priority_header, logger):
@@ -71,11 +68,10 @@ def priority_header_is_valid(priority_header, logger):
         priority_header_int = int(priority_header)
     except ValueError:
         return False
-    if priority_header_int and 0 < int(priority_header_int) < 6:
+    if priority_header_int and 0 < priority_header_int < 6:
         return True
-    else:
-        logger.warning('mailer priority_header is not a valid string from 1 to 5')
-        return False
+    logger.warning('mailer priority_header is not a valid string from 1 to 5')
+    return False
 
 
 def set_mimetext_headers(message, subject, from_addr, to_addrs, cc_addrs, priority, logger):
@@ -102,8 +98,11 @@ def get_mimetext_message(config, logger, message, resources, to_addrs):
 
     email_format = message['action'].get('template_format', None)
     if not email_format:
-        email_format = message['action'].get(
-            'template', 'default').endswith('html') and 'html' or 'plain'
+        email_format = (
+            'html'
+            if message['action'].get('template', 'default').endswith('html')
+            else 'plain'
+        )
 
     return set_mimetext_headers(
         message=MIMEText(body, email_format, 'utf-8'),

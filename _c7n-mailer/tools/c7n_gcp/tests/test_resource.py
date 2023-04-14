@@ -19,11 +19,11 @@ from c7n_gcp.provider import resources
 class ResourceMetaTest(BaseTest):
 
     def test_resource_id_meta(self):
-        missing = []
-        for name, resource in resources.items():
-            if not getattr(resource.resource_type, 'id', None):
-                missing.append(name)
-
-        if missing:
+        if missing := [
+            name
+            for name, resource in resources.items()
+            if not getattr(resource.resource_type, 'id', None)
+        ]:
             raise KeyError(
-                "Following resources are missing id metadata %s" % " ".join(missing))
+                f'Following resources are missing id metadata {" ".join(missing)}'
+            )

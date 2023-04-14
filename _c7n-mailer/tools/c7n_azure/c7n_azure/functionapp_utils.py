@@ -51,12 +51,7 @@ class FunctionAppUtilities(object):
         client = local_session(Session).client('azure.mgmt.storage.StorageManagementClient')
         obj = client.storage_accounts.list_keys(rg_name, name)
 
-        connection_string = 'DefaultEndpointsProtocol={};AccountName={};AccountKey={}'.format(
-            'https',
-            name,
-            obj.keys[0].value)
-
-        return connection_string
+        return f'DefaultEndpointsProtocol=https;AccountName={name};AccountKey={obj.keys[0].value}'
 
     @staticmethod
     def is_consumption_plan(function_params):
@@ -66,11 +61,9 @@ class FunctionAppUtilities(object):
     def deploy_function_app(parameters):
         function_app_unit = FunctionAppDeploymentUnit()
         function_app_params = \
-            {'name': parameters.function_app_name,
+                {'name': parameters.function_app_name,
              'resource_group_name': parameters.function_app_resource_group_name}
-        function_app = function_app_unit.get(function_app_params)
-
-        if function_app:
+        if function_app := function_app_unit.get(function_app_params):
             # retrieve the type of app service plan hosting the existing function app
             session = local_session(Session)
             web_client = session.client('azure.mgmt.web.WebSiteManagementClient')
@@ -97,12 +90,15 @@ class FunctionAppUtilities(object):
         storage_account_id = sa_unit.provision_if_not_exists(parameters.storage_account).id
         con_string = FunctionAppUtilities.get_storage_account_connection_string(storage_account_id)
 
-        function_app_params.update(
-            {'location': app_service_plan.location,
-             'app_service_plan_id': app_service_plan.id,
-             'app_insights_key': app_insights.instrumentation_key,
-             'is_consumption_plan': FunctionAppUtilities.is_consumption_plan(parameters),
-             'storage_account_connection_string': con_string})
+        function_app_params |= {
+            'location': app_service_plan.location,
+            'app_service_plan_id': app_service_plan.id,
+            'app_insights_key': app_insights.instrumentation_key,
+            'is_consumption_plan': FunctionAppUtilities.is_consumption_plan(
+                parameters
+            ),
+            'storage_account_connection_string': con_string,
+        }
 
         return function_app_unit.provision(function_app_params)
 
@@ -114,7 +110,7 @@ class FunctionAppUtilities(object):
 
     @staticmethod
     def get_function_name(policy_name, suffix):
-        function_app_name = policy_name + '-' + suffix
+        function_app_name = f'{policy_name}-{suffix}'
         return re.sub('[^A-Za-z0-9\\-]', '-', function_app_name)
 
     @classmethod
@@ -134,7 +130,6 @@ class FunctionAppUtilities(object):
                 package.publish(publish_creds)
             else:
                 cls.log.error("Aborted deployment, ensure Application Service is healthy.")
-        # provision using WEBSITE_RUN_FROM_PACKAGE
         else:
             # fetch blob client
             blob_client = StorageUtilities.get_blob_client_from_storage_account(
@@ -148,7 +143,7 @@ class FunctionAppUtilities(object):
             blob_client.create_container(FUNCTION_CONSUMPTION_BLOB_CONTAINER)
 
             # upload package
-            blob_name = '%s.zip' % function_params.function_app_name
+            blob_name = f'{function_params.function_app_name}.zip'
             packageToPublish = package.pkg.get_stream()
             count = os.path.getsize(package.pkg.path)
 
@@ -198,7 +193,7 @@ class FunctionAppUtilities(object):
         web_client = session.client('azure.mgmt.web.WebSiteManagementClient')
 
         max_retry_attempts = 3
-        for r in range(max_retry_attempts):
+        for _ in range(max_retry_attempts):
             res = None
             try:
                 res = web_client.web_apps.sync_function_triggers(
@@ -217,9 +212,8 @@ class FunctionAppUtilities(object):
 
             if res and res.status_code in [200, 204]:
                 return True
-            else:
-                cls.log.info("Retrying in 5 seconds...")
-                time.sleep(5)
+            cls.log.info("Retrying in 5 seconds...")
+            time.sleep(5)
 
         cls.log.error("Unable to sync triggers...")
         return False

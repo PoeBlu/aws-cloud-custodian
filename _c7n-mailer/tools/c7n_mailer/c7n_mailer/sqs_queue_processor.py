@@ -116,13 +116,13 @@ class MailerSqsQueueProcessor(object):
             process_pool = multiprocessing.Pool(processes=self.max_num_processes)
         for sqs_message in sqs_messages:
             self.logger.debug(
-                "Message id: %s received %s" % (
-                    sqs_message['MessageId'], sqs_message.get('MessageAttributes', '')))
+                f"Message id: {sqs_message['MessageId']} received {sqs_message.get('MessageAttributes', '')}"
+            )
             msg_kind = sqs_message.get('MessageAttributes', {}).get('mtype')
             if msg_kind:
                 msg_kind = msg_kind['StringValue']
-            if not msg_kind == DATA_MESSAGE:
-                warning_msg = 'Unknown sqs_message or sns format %s' % (sqs_message['Body'][:50])
+            if msg_kind != DATA_MESSAGE:
+                warning_msg = f"Unknown sqs_message or sns format {sqs_message['Body'][:50]}"
                 self.logger.warning(warning_msg)
             if parallel:
                 process_pool.apply_async(self.process_sqs_message, args=sqs_message)
@@ -177,7 +177,7 @@ class MailerSqsQueueProcessor(object):
 
             if self.config.get('slack_token'):
                 self.config['slack_token'] = \
-                    kms_decrypt(self.config, self.logger, self.session, 'slack_token')
+                        kms_decrypt(self.config, self.logger, self.session, 'slack_token')
 
             slack_delivery = SlackDelivery(self.config, self.logger, email_delivery)
             slack_messages = slack_delivery.get_to_addrs_slack_messages_map(sqs_message)
@@ -185,8 +185,6 @@ class MailerSqsQueueProcessor(object):
                 slack_delivery.slack_handler(sqs_message, slack_messages)
             except Exception:
                 traceback.print_exc()
-                pass
-
         # this section gets the map of metrics to send to datadog and delivers it
         if any(e.startswith('datadog') for e in sqs_message.get('action', ()).get('to')):
             from .datadog_delivery import DataDogDelivery
@@ -197,8 +195,6 @@ class MailerSqsQueueProcessor(object):
                 datadog_delivery.deliver_datadog_messages(datadog_message_packages, sqs_message)
             except Exception:
                 traceback.print_exc()
-                pass
-
         # this section sends the full event to a Splunk HTTP Event Collector (HEC)
         if any(
             e.startswith('splunkhec://')
@@ -214,4 +210,3 @@ class MailerSqsQueueProcessor(object):
                 splunk_delivery.deliver_splunk_messages(splunk_messages)
             except Exception:
                 traceback.print_exc()
-                pass

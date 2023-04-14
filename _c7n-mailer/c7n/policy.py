@@ -56,8 +56,7 @@ def load(options, path, format=None, validate=True, vars=None):
 
     if validate:
         from c7n.schema import validate
-        errors = validate(data)
-        if errors:
+        if errors := validate(data):
             raise PolicyValidationError(
                 "Failed to validate policy %s \n %s" % (
                     errors[1], errors[0]))
@@ -90,12 +89,10 @@ class PolicyCollection(object):
     def filter(self, policy_name=None, resource_type=None):
         results = []
         for policy in self.policies:
-            if resource_type:
-                if policy.resource_type != resource_type:
-                    continue
-            if policy_name:
-                if not fnmatch.fnmatch(policy.name, policy_name):
-                    continue
+            if resource_type and policy.resource_type != resource_type:
+                continue
+            if policy_name and not fnmatch.fnmatch(policy.name, policy_name):
+                continue
             results.append(policy)
         return PolicyCollection(results, self.options)
 
@@ -103,10 +100,7 @@ class PolicyCollection(object):
         return iter(self.policies)
 
     def __contains__(self, policy_name):
-        for p in self.policies:
-            if p.name == policy_name:
-                return True
-        return False
+        return any(p.name == policy_name for p in self.policies)
 
     def __len__(self):
         return len(self.policies)
@@ -114,10 +108,7 @@ class PolicyCollection(object):
     @property
     def resource_types(self):
         """resource types used by the collection."""
-        rtypes = set()
-        for p in self.policies:
-            rtypes.add(p.resource_type)
-        return rtypes
+        return {p.resource_type for p in self.policies}
 
     # cli/collection tests patch this
     @classmethod
@@ -172,7 +163,7 @@ class PolicyExecutionMode(object):
             else:
                 m, m_dimensions = m
                 dimensions = dict(default_dimensions)
-                dimensions.update(m_dimensions)
+                dimensions |= m_dimensions
             results = client.get_metric_statistics(
                 Namespace=DEFAULT_NAMESPACE,
                 Dimensions=[
@@ -257,7 +248,7 @@ class PullMode(PolicyExecutionMode):
             at = time.time()
             for a in self.policy.resource_manager.actions:
                 s = time.time()
-                with self.policy.ctx.tracer.subsegment('action:%s' % a.type):
+                with self.policy.ctx.tracer.subsegment(f'action:{a.type}'):
                     results = a.process(resources)
                 self.policy.log.info(
                     "policy:%s action:%s"
@@ -266,8 +257,7 @@ class PullMode(PolicyExecutionMode):
                         self.policy.name, a.name,
                         len(resources), time.time() - s))
                 if results:
-                    self.policy._write_file(
-                        "action-%s" % a.name, utils.dumps(results))
+                    self.policy._write_file(f"action-{a.name}", utils.dumps(results))
             self.policy.ctx.metrics.put_metric(
                 "ActionTime", time.time() - at, "Seconds", Scope="Policy")
             return resources
@@ -449,8 +439,8 @@ class LambdaMode(ServerlessExecutionMode):
 
         if not resources:
             self.policy.log.info(
-                "policy:%s resources:%s no resources matched" % (
-                    self.policy.name, self.policy.resource_type))
+                f"policy:{self.policy.name} resources:{self.policy.resource_type} no resources matched"
+            )
             return
 
         with self.policy.ctx:
@@ -473,8 +463,7 @@ class LambdaMode(ServerlessExecutionMode):
                     results = action.process(resources, event)
                 else:
                     results = action.process(resources)
-                self.policy._write_file(
-                    "action-%s" % action.name, utils.dumps(results))
+                self.policy._write_file(f"action-{action.name}", utils.dumps(results))
         return resources
 
     def provision(self):
@@ -537,14 +526,14 @@ class PHDMode(LambdaMode):
             return
         if 'health-event' not in self.policy.resource_manager.filter_registry:
             raise PolicyValidationError(
-                "policy:%s phd event mode not supported for resource:%s" % (
-                    self.policy.name, self.policy.resource_type))
+                f"policy:{self.policy.name} phd event mode not supported for resource:{self.policy.resource_type}"
+            )
 
     @staticmethod
     def process_event_arns(client, event_arns):
         entities = []
         paginator = client.get_paginator('describe_affected_entities')
-        for event_set in utils.chunks(event_arns, 10):
+        for _ in utils.chunks(event_arns, 10):
             entities.extend(list(itertools.chain(
                             *[p['entities'] for p in paginator.paginate(
                                 filter={'eventArns': event_arns})])))
@@ -593,15 +582,19 @@ class CloudTrailMode(LambdaMode):
         assert events, "cloud trail mode requires specifiying events to subscribe"
         for e in events:
             if isinstance(e, six.string_types):
-                assert e in CloudWatchEvents.trail_events, "event shortcut not defined: %s" % e
+                assert e in CloudWatchEvents.trail_events, f"event shortcut not defined: {e}"
             if isinstance(e, dict):
                 jmespath.compile(e['ids'])
-        if isinstance(self.policy.resource_manager, query.ChildResourceManager):
-            if not getattr(self.policy.resource_manager.resource_type,
-                           'supports_trailevents', False):
-                raise ValueError(
-                    "resource:%s does not support cloudtrail mode policies" % (
-                        self.policy.resource_type))
+        if isinstance(
+            self.policy.resource_manager, query.ChildResourceManager
+        ) and not getattr(
+            self.policy.resource_manager.resource_type,
+            'supports_trailevents',
+            False,
+        ):
+            raise ValueError(
+                f"resource:{self.policy.resource_type} does not support cloudtrail mode policies"
+            )
 
 
 @execution.register('ec2-instance-state')
@@ -660,10 +653,8 @@ class GuardDutyMode(LambdaMode):
         super(GuardDutyMode, self).validate()
         if self.policy.data['resource'] not in self.supported_resources:
             raise ValueError(
-                "Policy:%s resource:%s Guard duty mode only supported for %s" % (
-                    self.policy.data['name'],
-                    self.policy.data['resource'],
-                    self.supported_resources))
+                f"Policy:{self.policy.data['name']} resource:{self.policy.data['resource']} Guard duty mode only supported for {self.supported_resources}"
+            )
 
     def provision(self):
         if self.policy.data['resource'] == 'ec2':
@@ -708,13 +699,12 @@ class ConfigRuleMode(LambdaMode):
             if (match and resources) or (not match and not resources):
                 evaluation = {
                     'compliance_type': 'COMPLIANT',
-                    'annotation': 'The resource is compliant with policy:%s.' % (
-                        self.policy.name)}
+                    'annotation': f'The resource is compliant with policy:{self.policy.name}.',
+                }
             else:
                 evaluation = {
                     'compliance_type': 'NON_COMPLIANT',
-                    'annotation': 'Resource is not compliant with policy:%s' % (
-                        self.policy.name)
+                    'annotation': f'Resource is not compliant with policy:{self.policy.name}',
                 }
 
         client = utils.local_session(
@@ -747,8 +737,7 @@ class Policy(object):
         self.resource_manager = self.load_resource_manager()
 
     def __repr__(self):
-        return "<Policy resource:%s name:%s region:%s>" % (
-            self.resource_type, self.name, self.options.region)
+        return f"<Policy resource:{self.resource_type} name:{self.name} region:{self.options.region}>"
 
     @property
     def name(self):
@@ -807,21 +796,16 @@ class Policy(object):
 
     def get_execution_mode(self):
         exec_mode = execution[self.execution_mode]
-        if exec_mode is None:
-            return None
-        return exec_mode(self)
+        return None if exec_mode is None else exec_mode(self)
 
     @property
     def is_lambda(self):
-        if 'mode' not in self.data:
-            return False
-        return True
+        return 'mode' in self.data
 
     def validate(self):
         m = self.get_execution_mode()
         if m is None:
-            raise PolicyValidationError(
-                "Invalid Execution mode in policy %s" % (self.data,))
+            raise PolicyValidationError(f"Invalid Execution mode in policy {self.data}")
         m.validate()
         self.validate_policy_start_stop()
         self.resource_manager.validate()
@@ -844,10 +828,14 @@ class Policy(object):
         if not variables:
             variables = {}
 
-        if 'mode' in self.data:
-            if 'role' in self.data['mode'] and not self.data['mode']['role'].startswith("arn:aws"):
-                self.data['mode']['role'] = "arn:aws:iam::%s:role/%s" % \
-                                            (self.options.account_id, self.data['mode']['role'])
+        if (
+            'mode' in self.data
+            and 'role' in self.data['mode']
+            and not self.data['mode']['role'].startswith("arn:aws")
+        ):
+            self.data['mode'][
+                'role'
+            ] = f"arn:aws:iam::{self.options.account_id}:role/{self.data['mode']['role']}"
 
         variables.update({
             # standard runtime variables for interpolation
@@ -967,19 +955,16 @@ class Policy(object):
             try:
                 p_tz = tzutil.gettz(policy_tz)
             except Exception as e:
-                raise ValueError(
-                    "Policy: %s TZ not parsable: %s, %s" % (policy_name, policy_tz, e))
+                raise ValueError(f"Policy: {policy_name} TZ not parsable: {policy_tz}, {e}")
 
             # Type will be tzwin on windows, but tzwin is null on linux
             if not (isinstance(p_tz, tzutil.tzfile) or
                     (tzutil.tzwin and isinstance(p_tz, tzutil.tzwin))):
-                raise ValueError(
-                    "Policy: %s TZ not parsable: %s" % (policy_name, policy_tz))
+                raise ValueError(f"Policy: {policy_name} TZ not parsable: {policy_tz}")
 
         for i in [policy_start, policy_end]:
             if i:
                 try:
                     parser.parse(i)
                 except Exception as e:
-                    raise ValueError(
-                        "Policy: %s Date/Time not parsable: %s, %s" % (policy_name, i, e))
+                    raise ValueError(f"Policy: {policy_name} Date/Time not parsable: {i}, {e}")

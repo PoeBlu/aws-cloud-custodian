@@ -31,8 +31,7 @@ class FlightRecorder(Http):
         super(FlightRecorder, self).__init__()
 
     def get_next_file_path(self, uri, method, record=True):
-        base_name = "%s%s" % (
-            method.lower(), urlparse(uri).path.replace('/', '-').replace(':', '-'))
+        base_name = f"{method.lower()}{urlparse(uri).path.replace('/', '-').replace(':', '-')}"
         data_dir = self._data_path
 
         is_discovery = False
@@ -49,7 +48,7 @@ class FlightRecorder(Http):
         next_file = None
         while next_file is None:
             index = self._index.setdefault(base_name, 1)
-            fn = os.path.join(data_dir, '{}_{}.json'.format(base_name, index))
+            fn = os.path.join(data_dir, f'{base_name}_{index}.json')
             if is_discovery:
                 fn += '.bz2'
             if os.path.exists(fn):
@@ -81,12 +80,9 @@ class HttpRecorder(FlightRecorder):
         if fpath is None:
             return response, content
 
-        fopen = open
-        if fpath.endswith('.bz2'):
-            fopen = bz2.BZ2File
+        fopen = bz2.BZ2File if fpath.endswith('.bz2') else open
         with fopen(fpath, 'wb') as fh:
-            recorded = {}
-            recorded['headers'] = dict(response)
+            recorded = {'headers': dict(response)}
             if not content:
                 content = '{}'
             recorded['body'] = json.loads(content)

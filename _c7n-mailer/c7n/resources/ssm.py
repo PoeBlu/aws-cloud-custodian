@@ -105,11 +105,7 @@ class SendCommand(Action):
         if self.manager.type != 'ec2':
             return
 
-        found = False
-        for f in self.manager.iter_filters():
-            if f.type == 'ssm':
-                found = True
-                break
+        found = any(f.type == 'ssm' for f in self.manager.iter_filters())
         if not found:
             raise PolicyValidationError(
                 "send-command requires use of ssm filter on ec2 resources")

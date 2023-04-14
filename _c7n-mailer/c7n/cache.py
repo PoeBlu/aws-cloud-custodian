@@ -114,7 +114,7 @@ class FileCacheManager(object):
                     self.data = pickle.load(fh)
                 except EOFError:
                     return False
-            log.debug("Using cache file %s" % self.cache_path)
+            log.debug(f"Using cache file {self.cache_path}")
             return True
 
     def save(self, key, data):
@@ -123,16 +123,14 @@ class FileCacheManager(object):
                 self.data[pickle.dumps(key)] = data
                 pickle.dump(self.data, fh, protocol=2)
         except Exception as e:
-            log.warning("Could not save cache %s err: %s" % (
-                self.cache_path, e))
+            log.warning(f"Could not save cache {self.cache_path} err: {e}")
             if not os.path.exists(self.cache_path):
                 directory = os.path.dirname(self.cache_path)
-                log.info('Generating Cache directory: %s.' % directory)
+                log.info(f'Generating Cache directory: {directory}.')
                 try:
                     os.makedirs(directory)
                 except Exception as e:
-                    log.warning("Could not create directory: %s err: %s" % (
-                        directory, e))
+                    log.warning(f"Could not create directory: {directory} err: {e}")
 
     def size(self):
         return os.path.exists(self.cache_path) and os.path.getsize(self.cache_path) or 0

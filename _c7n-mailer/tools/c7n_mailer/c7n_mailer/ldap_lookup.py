@@ -80,8 +80,7 @@ class LdapLookup(object):
     def get_email_to_addrs_from_uid(self, uid, manager=False):
         to_addrs = []
         uid_metadata = self.get_metadata_from_uid(uid)
-        uid_email = uid_metadata.get(self.email_key, None)
-        if uid_email:
+        if uid_email := uid_metadata.get(self.email_key, None):
             to_addrs.append(uid_email)
         if manager:
             uid_manager_dn = uid_metadata.get(self.manager_attr, None)
@@ -95,21 +94,21 @@ class LdapLookup(object):
 
     # eg, dn = uid=bill_lumbergh,cn=users,dc=initech,dc=com
     def get_metadata_from_dn(self, user_dn):
-        if self.cache_engine:
-            cache_result = self.caching.get(user_dn)
-            if cache_result:
-                cache_msg = 'Got ldap metadata from local cache for: %s' % user_dn
+        if cache_result := self.caching.get(user_dn):
+            if self.cache_engine:
+                cache_msg = f'Got ldap metadata from local cache for: {user_dn}'
                 self.log.debug(cache_msg)
                 return cache_result
-        ldap_filter = '(%s=*)' % self.uid_key
-        ldap_results = self.search_ldap(user_dn, ldap_filter, attributes=self.attributes)
-        if ldap_results:
+        ldap_filter = f'({self.uid_key}=*)'
+        if ldap_results := self.search_ldap(
+            user_dn, ldap_filter, attributes=self.attributes
+        ):
             ldap_user_metadata = self.get_dict_from_ldap_object(self.connection.entries[0])
         else:
             self.caching.set(user_dn, {})
             return {}
         if self.cache_engine:
-            self.log.debug('Writing user: %s metadata to cache engine.' % user_dn)
+            self.log.debug(f'Writing user: {user_dn} metadata to cache engine.')
             self.caching.set(user_dn, ldap_user_metadata)
             self.caching.set(ldap_user_metadata[self.uid_key], ldap_user_metadata)
         return ldap_user_metadata
@@ -123,37 +122,31 @@ class LdapLookup(object):
 
         if not email_key or not uid_key:
             return {}
-        else:
-            ldap_user_metadata['self.email_key'] = email_key.lower()
-            ldap_user_metadata['self.uid_key'] = uid_key.lower()
+        ldap_user_metadata['self.email_key'] = email_key.lower()
+        ldap_user_metadata['self.uid_key'] = uid_key.lower()
 
         return ldap_user_metadata
 
     # eg, uid = bill_lumbergh
     def get_metadata_from_uid(self, uid):
         uid = uid.lower()
-        if self.uid_regex:
-            # for example if you set ldap_uid_regex in your mailer.yml to "^[0-9]{6}$" then it
-            # would only query LDAP if your string length is 6 characters long and only digits.
-            # re.search("^[0-9]{6}$", "123456")
-            # Out[41]: <_sre.SRE_Match at 0x1109ab440>
-            # re.search("^[0-9]{6}$", "1234567") returns None, or "12345a' also returns None
-            if not re.search(self.uid_regex, uid):
-                regex_msg = 'uid does not match regex: %s %s' % (self.uid_regex, uid)
-                self.log.debug(regex_msg)
-                return {}
+        if self.uid_regex and not re.search(self.uid_regex, uid):
+            regex_msg = f'uid does not match regex: {self.uid_regex} {uid}'
+            self.log.debug(regex_msg)
+            return {}
         if self.cache_engine:
             cache_result = self.caching.get(uid)
             if cache_result or cache_result == {}:
-                cache_msg = 'Got ldap metadata from local cache for: %s' % uid
+                cache_msg = f'Got ldap metadata from local cache for: {uid}'
                 self.log.debug(cache_msg)
                 return cache_result
-        ldap_filter = '(%s=%s)' % (self.uid_key, uid)
-        ldap_results = self.search_ldap(self.base_dn, ldap_filter, attributes=self.attributes)
-        if ldap_results:
+        ldap_filter = f'({self.uid_key}={uid})'
+        if ldap_results := self.search_ldap(
+            self.base_dn, ldap_filter, attributes=self.attributes
+        ):
             ldap_user_metadata = self.get_dict_from_ldap_object(self.connection.entries[0])
             if self.cache_engine:
-                self.log.debug('Writing user: %s metadata to cache engine.' % uid)
+                self.log.debug(f'Writing user: {uid} metadata to cache engine.')
                 if ldap_user_metadata.get('dn'):
                     self.caching.set(ldap_user_metadata['dn'], ldap_user_metadata)
                     self.caching.set(uid, ldap_user_metadata)
@@ -180,7 +173,7 @@ class LocalSqlite(object):
         sqlite_result = self.sqlite.execute("select * FROM ldap_cache WHERE key=?", (key,))
         result = sqlite_result.fetchall()
         if len(result) != 1:
-            error_msg = 'Did not get 1 result from sqlite, something went wrong with key: %s' % key
+            error_msg = f'Did not get 1 result from sqlite, something went wrong with key: {key}'
             self.log.error(error_msg)
             return None
         return json.loads(result[0][1])
@@ -198,8 +191,7 @@ class Redis(object):
         self.connection = redis.StrictRedis(host=redis_host, port=redis_port, db=db)
 
     def get(self, key):
-        cache_value = self.connection.get(key)
-        if cache_value:
+        if cache_value := self.connection.get(key):
             return json.loads(cache_value)
 
     def set(self, key, value):

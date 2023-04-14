@@ -30,9 +30,7 @@ class NotifyTest(BaseTest):
 
         def client_factory(*args, **kw):
             calls.append(args)
-            if len(calls) == 1:
-                return orig_client(*args, **kw)
-            return stub_client
+            return orig_client(*args, **kw) if len(calls) == 1 else stub_client
 
         self.patch(Session, 'client', client_factory)
 

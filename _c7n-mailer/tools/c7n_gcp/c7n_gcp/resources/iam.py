@@ -32,10 +32,11 @@ class ProjectRole(QueryResourceManager):
         @staticmethod
         def get(client, resource_info):
             return client.execute_query(
-                'get', verb_arguments={
-                    'name': 'projects/{}/roles/{}'.format(
-                        resource_info['project_id'],
-                        resource_info['role_name'].rsplit('/', 1)[-1])})
+                'get',
+                verb_arguments={
+                    'name': f"projects/{resource_info['project_id']}/roles/{resource_info['role_name'].rsplit('/', 1)[-1]}"
+                },
+            )
 
 
 @resources.register('service-account')
@@ -54,10 +55,11 @@ class ServiceAccount(QueryResourceManager):
         @staticmethod
         def get(client, resource_info):
             return client.execute_query(
-                'get', verb_arguments={
-                    'name': 'projects/{}/serviceAccounts/{}'.format(
-                        resource_info['project_id'],
-                        resource_info['email_id'])})
+                'get',
+                verb_arguments={
+                    'name': f"projects/{resource_info['project_id']}/serviceAccounts/{resource_info['email_id']}"
+                },
+            )
 
 
 @resources.register('iam-role')
@@ -74,6 +76,5 @@ class Role(QueryResourceManager):
         @staticmethod
         def get(client, resource_info):
             return client.execute_command(
-                'get', {
-                    'name': 'roles/{}'.format(
-                        resource_info['name'])})
+                'get', {'name': f"roles/{resource_info['name']}"}
+            )

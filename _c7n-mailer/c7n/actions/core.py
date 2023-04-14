@@ -34,17 +34,13 @@ class ActionRegistry(PluginRegistry):
         self.register('webhook', Webhook)
 
     def parse(self, data, manager):
-        results = []
-        for d in data:
-            results.append(self.factory(d, manager))
-        return results
+        return [self.factory(d, manager) for d in data]
 
     def factory(self, data, manager):
         if isinstance(data, dict):
             action_type = data.get('type')
             if action_type is None:
-                raise PolicyValidationError(
-                    "Invalid action type found in %s" % (data))
+                raise PolicyValidationError(f"Invalid action type found in {data}")
         else:
             action_type = data
             data = {}
@@ -52,8 +48,8 @@ class ActionRegistry(PluginRegistry):
         action_class = self.get(action_type)
         if action_class is None:
             raise PolicyValidationError(
-                "Invalid action type %s, valid actions %s" % (
-                    action_type, list(self.keys())))
+                f"Invalid action type {action_type}, valid actions {list(self.keys())}"
+            )
         # Construct a ResourceManager
         return action_class(data, manager)
 
@@ -97,8 +93,8 @@ class Action(object):
             e.response['ResponseMetadata']['HTTPStatusCode'] == 412 and
             'would have succeeded' in e.response['Error']['Message']):
                 return self.log.info(
-                    "Dry run operation %s succeeded" % (
-                        self.__class__.__name__.lower()))
+                    f"Dry run operation {self.__class__.__name__.lower()} succeeded"
+                )
             raise
 
 

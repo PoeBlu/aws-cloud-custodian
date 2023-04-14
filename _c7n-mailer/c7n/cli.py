@@ -169,10 +169,7 @@ def _logs_options(p):
 
 def _schema_tab_completer(prefix, parsed_args, **kwargs):
     # If we are printing the summary we discard the resource
-    if parsed_args.summary:
-        return []
-
-    return schema_completer(prefix)
+    return [] if parsed_args.summary else schema_completer(prefix)
 
 
 def _schema_options(p):

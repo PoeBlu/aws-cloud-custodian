@@ -38,9 +38,14 @@ class DependencyManager(object):
         dists = DependencyManager._get_installed_distributions()
         res = []
         for p in packages:
-            res.extend([str(r) for r in next(d.requires() for d in dists if (p + ' ') in str(d))])
+            res.extend(
+                [
+                    str(r)
+                    for r in next(d.requires() for d in dists if f'{p} ' in str(d))
+                ]
+            )
 
-        res = [t for t in res if not any((e in t) for e in excluded_packages + packages)]
+        res = [t for t in res if all(e not in t for e in excluded_packages + packages)]
 
         # boto3 is a dependency for both c7n and c7n_mailer.. Remove the duplicate from the list
         # because not all versions of pip can handle this.
@@ -48,8 +53,11 @@ class DependencyManager(object):
         regex = "^[^<>~=]*"
         for i, val in enumerate(res):
             pname = re.match(regex, val)
-            if sum(pname.group(0).lower() == re.match(regex, e.lower()).group(0) for e in res) > 1:
-                logger.debug("removing duplicate dependency:" + val)
+            if (
+                sum(pname[0].lower() == re.match(regex, e.lower())[0] for e in res)
+                > 1
+            ):
+                logger.debug(f"removing duplicate dependency:{val}")
                 res.pop(i)
         return sorted(res)
 
@@ -62,8 +70,15 @@ class DependencyManager(object):
         packages = [str(d).replace(' ', '==') for d in dists
                     if any(p.lower() in str(d).lower() for p in packages)]
 
-        cmd = ['pip', 'wheel', '-w', folder, '--no-binary=:all:', '--no-dependencies']
-        cmd.extend(packages)
+        cmd = [
+            'pip',
+            'wheel',
+            '-w',
+            folder,
+            '--no-binary=:all:',
+            '--no-dependencies',
+            *packages,
+        ]
         pip = DependencyManager._run(cmd)
 
         if pip.returncode != 0:
@@ -146,9 +161,7 @@ class DependencyManager(object):
         if DependencyManager._get_string_hash(' '.join(packages)) != data.get('packages_hash'):
             return False
 
-        if DependencyManager._get_file_hash(cache_zip_file) != data.get('zip_hash'):
-            return False
-        return True
+        return DependencyManager._get_file_hash(cache_zip_file) == data.get('zip_hash')
 
     @staticmethod
     def create_cache_metadata(cache_metadata_file, cache_zip_file, packages):

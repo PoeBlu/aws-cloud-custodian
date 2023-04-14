@@ -37,9 +37,7 @@ class FunctionAppDeploymentUnit(DeploymentUnit):
                                       FunctionAppDeploymentUnit.generate_machine_decryption_key()))
             site_config.always_on = True
 
-        # application insights settings
-        app_insights_key = params['app_insights_key']
-        if app_insights_key:
+        if app_insights_key := params['app_insights_key']:
             site_config.app_settings.append(
                 azure_name_value_pair('APPINSIGHTS_INSTRUMENTATIONKEY', app_insights_key))
 

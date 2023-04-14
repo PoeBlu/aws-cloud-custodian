@@ -93,7 +93,7 @@ class AzureStorageOutput(DirectoryOutput):
                                    "and that 'Storage Blob Contributor' role is assigned. \n" +
                                    str(e))
 
-                self.log.debug("%s uploaded" % blob_name)
+                self.log.debug(f"{blob_name} uploaded")
 
     @staticmethod
     def join(*parts):

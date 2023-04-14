@@ -21,7 +21,7 @@ import pytest
 from c7n_mailer.splunk_delivery import SplunkHecDelivery
 
 pbm = 'c7n_mailer.splunk_delivery'
-pb = '%s.SplunkHecDelivery' % pbm
+pb = f'{pbm}.SplunkHecDelivery'
 
 
 class DeliveryTester(object):
@@ -51,17 +51,11 @@ class TestInit(DeliveryTester):
 
 class TestGetSplunkPayloads(DeliveryTester):
 
-    @patch(
-        '%s.get_splunk_events' % pb,
-        return_value=[
+    @patch(f'{pb}.get_splunk_events', return_value=[
             {'account': 'A', 'resource': 1},
             {'resource': 2}
-        ]
-    )
-    @patch(
-        '%s._splunk_indices_for_message' % pb,
-        return_value=['indexA', 'indexB']
-    )
+        ])
+    @patch(f'{pb}._splunk_indices_for_message', return_value=['indexA', 'indexB'])
     def test_payloads(self, mock_gse, mock_sifm):
         msg = {'some': 'message'}
         ts = 1557493290000
@@ -106,19 +100,12 @@ class TestGetSplunkPayloads(DeliveryTester):
 
 class TestGetSplunkEvents(DeliveryTester):
 
-    @patch(
-        '%s.get_aws_username_from_event' % pbm,
-        return_value='uname'
-    )
-    @patch(
-        '%s._prune_log_message' % pb, return_value={'event': 'cleaned'}
-    )
+    @patch(f'{pbm}.get_aws_username_from_event', return_value='uname')
+    @patch(f'{pb}._prune_log_message', return_value={'event': 'cleaned'})
     def test_simple(self, mock_prune, mock_getuser):
 
         def se_tags(res):
-            if res['InstanceId'] == 'i-123':
-                return {'tag1': 'val1'}
-            return {}
+            return {'tag1': 'val1'} if res['InstanceId'] == 'i-123' else {}
 
         msg = {
             'account': 'aname',
@@ -151,7 +138,7 @@ class TestGetSplunkEvents(DeliveryTester):
                 {'InstanceId': 'i-789', 'c7n.metrics': {'foo': 'bar'}}
             ]
         }
-        with patch('%s.tags_for_resource' % pb) as mock_tags:
+        with patch(f'{pb}.tags_for_resource') as mock_tags:
             mock_tags.side_effect = se_tags
             res = self.cls.get_splunk_events(msg)
         assert res == [
@@ -247,20 +234,13 @@ class TestGetSplunkEvents(DeliveryTester):
             })
         ]
 
-    @patch(
-        '%s.get_aws_username_from_event' % pbm,
-        return_value='uname'
-    )
-    @patch(
-        '%s._prune_log_message' % pb, return_value={'event': 'cleaned'}
-    )
+    @patch(f'{pbm}.get_aws_username_from_event', return_value='uname')
+    @patch(f'{pb}._prune_log_message', return_value={'event': 'cleaned'})
     def test_splunk_actions_list(self, mock_prune, mock_getuser):
         self.config['splunk_actions_list'] = True
 
         def se_tags(res):
-            if res['InstanceId'] == 'i-123':
-                return {'tag1': 'val1'}
-            return {}
+            return {'tag1': 'val1'} if res['InstanceId'] == 'i-123' else {}
 
         msg = {
             'account': 'aname',
@@ -287,7 +267,7 @@ class TestGetSplunkEvents(DeliveryTester):
                 {'InstanceId': 'i-789', 'c7n.metrics': {'foo': 'bar'}}
             ]
         }
-        with patch('%s.tags_for_resource' % pb) as mock_tags:
+        with patch(f'{pb}.tags_for_resource') as mock_tags:
             mock_tags.side_effect = se_tags
             res = self.cls.get_splunk_events(msg)
         assert res == [
@@ -495,7 +475,7 @@ class TestDeliverSplunkMessages(DeliveryTester):
             {'foo': 'bar'},
             {'baz': 'blam'}
         ]
-        with patch('%s._try_send' % pb, autospec=True) as mock_send:
+        with patch(f'{pb}._try_send', autospec=True) as mock_send:
             mock_send.return_value = True
             self.cls.deliver_splunk_messages(msg)
         assert mock_send.mock_calls == [
@@ -508,7 +488,7 @@ class TestDeliverSplunkMessages(DeliveryTester):
             {'foo': 'bar'},
             {'baz': 'blam'}
         ]
-        with patch('%s._try_send' % pb, autospec=True) as mock_send:
+        with patch(f'{pb}._try_send', autospec=True) as mock_send:
             mock_send.side_effect = [True, False]
             with pytest.raises(RuntimeError):
                 self.cls.deliver_splunk_messages(msg)
@@ -523,9 +503,9 @@ class TestTrySend(DeliveryTester):
     def test_success(self):
         self.config['splunk_max_attempts'] = 3
         self.config['splunk_hex_max_length'] = None
-        with patch('%s.sleep' % pbm) as mock_sleep:
-            with patch('%s.uniform' % pbm) as mock_uniform:
-                with patch('%s._send_splunk' % pb) as mock_send:
+        with patch(f'{pbm}.sleep') as mock_sleep:
+            with patch(f'{pbm}.uniform') as mock_uniform:
+                with patch(f'{pb}._send_splunk') as mock_send:
                     mock_uniform.return_value = 1.2
                     res = self.cls._try_send({'foo': 'bar'})
         assert res is True
@@ -539,13 +519,11 @@ class TestTrySend(DeliveryTester):
     def test_payload_too_long(self):
         self.config['splunk_max_attempts'] = 3
         self.config['splunk_hec_max_length'] = 3000
-        p = {}
-        for i in range(1, 2000):
-            p['%d' % i] = i
+        p = {'%d' % i: i for i in range(1, 2000)}
         j = json.dumps(p)
-        with patch('%s.sleep' % pbm) as mock_sleep:
-            with patch('%s.uniform' % pbm) as mock_uniform:
-                with patch('%s._send_splunk' % pb) as mock_send:
+        with patch(f'{pbm}.sleep') as mock_sleep:
+            with patch(f'{pbm}.uniform') as mock_uniform:
+                with patch(f'{pb}._send_splunk') as mock_send:
                     mock_uniform.return_value = 1.2
                     self.cls._try_send(p)
         assert mock_sleep.mock_calls == []
@@ -562,9 +540,9 @@ class TestTrySend(DeliveryTester):
     def test_fail_once(self):
         self.config['splunk_max_attempts'] = 3
         self.config['splunk_hex_max_length'] = None
-        with patch('%s.sleep' % pbm) as mock_sleep:
-            with patch('%s.uniform' % pbm) as mock_uniform:
-                with patch('%s._send_splunk' % pb) as mock_send:
+        with patch(f'{pbm}.sleep') as mock_sleep:
+            with patch(f'{pbm}.uniform') as mock_uniform:
+                with patch(f'{pb}._send_splunk') as mock_send:
                     mock_uniform.return_value = 1.2
                     mock_send.side_effect = [
                         # raise an Exception first time, succeed second
@@ -588,9 +566,9 @@ class TestTrySend(DeliveryTester):
     def test_fail_always(self):
         self.config['splunk_max_attempts'] = 3
         self.config['splunk_hex_max_length'] = None
-        with patch('%s.sleep' % pbm) as mock_sleep:
-            with patch('%s.uniform' % pbm) as mock_uniform:
-                with patch('%s._send_splunk' % pb) as mock_send:
+        with patch(f'{pbm}.sleep') as mock_sleep:
+            with patch(f'{pbm}.uniform') as mock_uniform:
+                with patch(f'{pb}._send_splunk') as mock_send:
                     mock_uniform.return_value = 1.2
                     mock_send.side_effect = RuntimeError('foo')
                     res = self.cls._try_send({'foo': 'bar'})
@@ -636,7 +614,7 @@ class TestSendSplunk(DeliveryTester):
         type(m_resp).text = '{"text": "Success"}'
         type(m_resp).headers = {'H1': 'V1'}
         m_resp.json.return_value = {'text': 'Success'}
-        with patch('%s.requests' % pbm, autospec=True) as mock_req:
+        with patch(f'{pbm}.requests', autospec=True) as mock_req:
             mock_req.post.return_value = m_resp
             self.cls._send_splunk('{"foo": "bar"}')
         assert mock_req.mock_calls == [
@@ -665,7 +643,7 @@ class TestSendSplunk(DeliveryTester):
         def se_post(*args, **kwargs):
             raise Exception('foo')
 
-        with patch('%s.requests' % pbm, autospec=True) as mock_req:
+        with patch(f'{pbm}.requests', autospec=True) as mock_req:
             mock_req.post.side_effect = se_post
             with pytest.raises(Exception):
                 self.cls._send_splunk('{"foo": "bar"}')
@@ -695,7 +673,7 @@ class TestSendSplunk(DeliveryTester):
         type(m_resp).text = '{"text": "Success"}'
         type(m_resp).headers = {'H1': 'V1'}
         m_resp.json.return_value = {'text': 'Success'}
-        with patch('%s.requests' % pbm, autospec=True) as mock_req:
+        with patch(f'{pbm}.requests', autospec=True) as mock_req:
             mock_req.post.return_value = m_resp
             with pytest.raises(RuntimeError):
                 self.cls._send_splunk('{"foo": "bar"}')
@@ -729,7 +707,7 @@ class TestSendSplunk(DeliveryTester):
         type(m_resp).text = '{"text": "Failure"}'
         type(m_resp).headers = {'H1': 'V1'}
         m_resp.json.return_value = {'text': 'Failure'}
-        with patch('%s.requests' % pbm, autospec=True) as mock_req:
+        with patch(f'{pbm}.requests', autospec=True) as mock_req:
             mock_req.post.return_value = m_resp
             with pytest.raises(RuntimeError):
                 self.cls._send_splunk('{"foo": "bar"}')
@@ -768,7 +746,7 @@ class TestSendSplunk(DeliveryTester):
         type(m_resp).text = '{"text": "Failure"}'
         type(m_resp).headers = {'H1': 'V1'}
         m_resp.json.side_effect = se_exc
-        with patch('%s.requests' % pbm, autospec=True) as mock_req:
+        with patch(f'{pbm}.requests', autospec=True) as mock_req:
             mock_req.post.return_value = m_resp
             with pytest.raises(RuntimeError):
                 self.cls._send_splunk('{"foo": "bar"}')

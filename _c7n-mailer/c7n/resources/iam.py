@@ -214,10 +214,10 @@ class Policy(QueryResourceManager):
 class DescribePolicy(DescribeSource):
 
     def resources(self, query=None):
-        qfilters = PolicyQueryParser.parse(self.manager.data.get('query', []))
-        query = query or {}
-        if qfilters:
+        if qfilters := PolicyQueryParser.parse(self.manager.data.get('query', [])):
             query = {t['Name']: t['Value'] for t in qfilters}
+        else:
+            query = query or {}
         return super(DescribePolicy, self).resources(query=query)
 
     def get_resources(self, resource_ids, cache=True):
@@ -375,12 +375,11 @@ class ServiceUsage(Filter):
 
         while job_resource_map:
             job_results_map = {}
-            for jid, r in job_resource_map.items():
+            for jid in job_resource_map:
                 result = self.manager.retry(
                     client.get_service_last_accessed_details, JobId=jid)
-                if result['JobStatus'] != self.JOB_COMPLETE:
-                    continue
-                job_results_map[jid] = result['ServicesLastAccessed']
+                if result['JobStatus'] == self.JOB_COMPLETE:
+                    job_results_map[jid] = result['ServicesLastAccessed']
 
             for jid, saf_results in job_results_map.items():
                 r = job_resource_map.pop(jid)
@@ -469,22 +468,22 @@ class CheckPermissions(Filter):
         return self.manager.get_arns(resources)
 
     def get_evaluations(self, client, arn, r, actions):
-        if self.manager.type == 'iam-policy':
-            policy = r.get(self.policy_annotation)
-            if policy is None:
-                r['c7n:policy'] = policy = client.get_policy_version(
-                    PolicyArn=r['Arn'],
-                    VersionId=r['DefaultVersionId']).get('PolicyVersion', {})
-            evaluations = self.manager.retry(
-                client.simulate_custom_policy,
-                PolicyInputList=[json.dumps(policy['Document'])],
-                ActionNames=actions).get('EvaluationResults', ())
-        else:
-            evaluations = self.manager.retry(
+        if self.manager.type != 'iam-policy':
+            return self.manager.retry(
                 client.simulate_principal_policy,
                 PolicySourceArn=arn,
-                ActionNames=actions).get('EvaluationResults', ())
-        return evaluations
+                ActionNames=actions,
+            ).get('EvaluationResults', ())
+        policy = r.get(self.policy_annotation)
+        if policy is None:
+            r['c7n:policy'] = policy = client.get_policy_version(
+                PolicyArn=r['Arn'],
+                VersionId=r['DefaultVersionId']).get('PolicyVersion', {})
+        return self.manager.retry(
+            client.simulate_custom_policy,
+            PolicyInputList=[json.dumps(policy['Document'])],
+            ActionNames=actions,
+        ).get('EvaluationResults', ())
 
     def get_eval_matcher(self):
         if isinstance(self.data['match'], six.string_types):
@@ -531,14 +530,16 @@ class IamRoleUsage(Filter):
         results = []
         client = local_session(self.manager.session_factory).client('ecs')
         for cluster in client.describe_clusters()['clusters']:
-            services = client.list_services(
-                cluster=cluster['clusterName'])['serviceArns']
-            if services:
-                for service in client.describe_services(
-                        cluster=cluster['clusterName'],
-                        services=services)['services']:
-                    if 'roleArn' in service:
-                        results.append(service['roleArn'])
+            if services := client.list_services(cluster=cluster['clusterName'])[
+                'serviceArns'
+            ]:
+                results.extend(
+                    service['roleArn']
+                    for service in client.describe_services(
+                        cluster=cluster['clusterName'], services=services
+                    )['services']
+                    if 'roleArn' in service
+                )
         return results
 
     def collect_profile_roles(self):
@@ -553,8 +554,7 @@ class IamRoleUsage(Filter):
         for p in iprofiles:
             if p['InstanceProfileName'] not in profiles:
                 continue
-            for role in p.get('Roles', []):
-                results.append(role['RoleName'])
+            results.extend(role['RoleName'] for role in p.get('Roles', []))
         return results
 
     def scan_asg_roles(self):
@@ -569,11 +569,9 @@ class IamRoleUsage(Filter):
             # do not include instances that have been recently terminated
             if e['State']['Name'] == 'terminated':
                 continue
-            profile_arn = e.get('IamInstanceProfile', {}).get('Arn', None)
-            if not profile_arn:
-                continue
-            # split arn to get the profile name
-            results.append(profile_arn.split('/')[-1])
+            if profile_arn := e.get('IamInstanceProfile', {}).get('Arn', None):
+                # split arn to get the profile name
+                results.append(profile_arn.split('/')[-1])
         return results
 
 
@@ -753,8 +751,11 @@ class NoSpecificIamRoleManagedPolicy(Filter):
     def process(self, resources, event=None):
         c = local_session(self.manager.session_factory).client('iam')
         if self.data.get('value'):
-            return [r for r in resources if not self.data.get('value') in
-            self._managed_policies(c, r)]
+            return [
+                r
+                for r in resources
+                if self.data.get('value') not in self._managed_policies(c, r)
+            ]
         return []
 
 
@@ -841,8 +842,8 @@ class RoleDelete(BaseAction):
                 client.delete_role(RoleName=r['RoleName'])
             except client.exceptions.DeleteConflictException as e:
                 self.log.warning(
-                    "Role:%s cannot be deleted, must remove role from instance profile first"
-                    % r['Arn'])
+                    f"Role:{r['Arn']} cannot be deleted, must remove role from instance profile first"
+                )
                 error = e
             except client.exceptions.NoSuchEntityException:
                 continue
@@ -954,17 +955,19 @@ class AllowAllIamPolicies(Filter):
         if isinstance(statements, dict):
             statements = [statements]
 
-        for s in statements:
-            if ('Condition' not in s and
-                    'Action' in s and
-                    isinstance(s['Action'], six.string_types) and
-                    s['Action'] == "*" and
-                    'Resource' in s and
-                    isinstance(s['Resource'], six.string_types) and
-                    s['Resource'] == "*" and
-                    s['Effect'] == "Allow"):
-                return True
-        return False
+        return any(
+            (
+                'Condition' not in s
+                and 'Action' in s
+                and isinstance(s['Action'], six.string_types)
+                and s['Action'] == "*"
+                and 'Resource' in s
+                and isinstance(s['Resource'], six.string_types)
+                and s['Resource'] == "*"
+                and s['Effect'] == "Allow"
+            )
+            for s in statements
+        )
 
     def process(self, resources, event=None):
         c = local_session(self.manager.session_factory).client('iam')
@@ -1037,11 +1040,12 @@ class UsedInstanceProfiles(IamRoleUsage):
     schema = type_schema('used')
 
     def process(self, resources, event=None):
-        results = []
         profiles = self.instance_profile_usage()
-        for r in resources:
-            if r['Arn'] in profiles or r['InstanceProfileName'] in profiles:
-                results.append(r)
+        results = [
+            r
+            for r in resources
+            if r['Arn'] in profiles or r['InstanceProfileName'] in profiles
+        ]
         self.log.info(
             "%d of %d instance profiles currently in use." % (
                 len(results), len(resources)))
@@ -1066,11 +1070,15 @@ class UnusedInstanceProfiles(IamRoleUsage):
     schema = type_schema('unused')
 
     def process(self, resources, event=None):
-        results = []
         profiles = self.instance_profile_usage()
-        for r in resources:
-            if (r['Arn'] not in profiles or r['InstanceProfileName'] not in profiles):
-                results.append(r)
+        results = [
+            r
+            for r in resources
+            if (
+                r['Arn'] not in profiles
+                or r['InstanceProfileName'] not in profiles
+            )
+        ]
         self.log.info(
             "%d of %d instance profiles currently not in use." % (
                 len(results), len(resources)))
@@ -1260,12 +1268,7 @@ class CredentialReport(Filter):
         vf = ValueFilter(self.matcher_config)
         vf.annotate = False
 
-        # annotation merging with previous respecting block operators
-        k_matched = []
-        for v in info.get(prefix, ()):
-            if vf.match(v):
-                k_matched.append(v)
-
+        k_matched = [v for v in info.get(prefix, ()) if vf.match(v)]
         for k in k_matched:
             k['c7n:match-type'] = 'credential'
 
@@ -1396,12 +1399,13 @@ class GroupMembership(ValueFilter):
     def process(self, resources, event=None):
         client = local_session(self.manager.session_factory).client('iam')
         with self.executor_factory(max_workers=2) as w:
-            futures = []
-            for user_set in chunks(
-                    [r for r in resources if 'c7n:Groups' not in r], size=50):
-                futures.append(
-                    w.submit(self.get_user_groups, client, user_set))
-            for f in as_completed(futures):
+            futures = [
+                w.submit(self.get_user_groups, client, user_set)
+                for user_set in chunks(
+                    [r for r in resources if 'c7n:Groups' not in r], size=50
+                )
+            ]
+            for _ in as_completed(futures):
                 pass
 
         matched = []
@@ -1454,10 +1458,7 @@ class UserAccessKey(ValueFilter):
 
         matched = []
         for r in resources:
-            k_matched = []
-            for k in r[self.annotation_key]:
-                if self.match(k):
-                    k_matched.append(k)
+            k_matched = [k for k in r[self.annotation_key] if self.match(k)]
             for k in k_matched:
                 k['c7n:matched-type'] = 'access'
             self.merge_annotation(r, self.matched_annotation_key, k_matched)
@@ -1518,23 +1519,24 @@ class UserMfaDevice(ValueFilter):
 class UserFinding(OtherResourcePostFinding):
 
     def format_resource(self, r):
-        if any(filter(lambda x: isinstance(x, UserAccessKey), self.manager.iter_filters())):
-            details = {
-                "UserName": "arn:aws:iam:{}:user/{}".format(
-                    self.manager.config.account_id, r["c7n:AccessKeys"][0]["UserName"]
-                ),
-                "Status": r["c7n:AccessKeys"][0]["Status"],
-                "CreatedAt": r["c7n:AccessKeys"][0]["CreateDate"].isoformat(),
-            }
-            accesskey = {
-                "Type": "AwsIamAccessKey",
-                "Id": r["c7n:AccessKeys"][0]["AccessKeyId"],
-                "Region": self.manager.config.region,
-                "Details": {"AwsIamAccessKey": filter_empty(details)},
-            }
-            return filter_empty(accesskey)
-        else:
+        if not any(
+            filter(
+                lambda x: isinstance(x, UserAccessKey), self.manager.iter_filters()
+            )
+        ):
             return super(UserFinding, self).format_resource(r)
+        details = {
+            "UserName": f'arn:aws:iam:{self.manager.config.account_id}:user/{r["c7n:AccessKeys"][0]["UserName"]}',
+            "Status": r["c7n:AccessKeys"][0]["Status"],
+            "CreatedAt": r["c7n:AccessKeys"][0]["CreateDate"].isoformat(),
+        }
+        accesskey = {
+            "Type": "AwsIamAccessKey",
+            "Id": r["c7n:AccessKeys"][0]["AccessKeyId"],
+            "Region": self.manager.config.region,
+            "Details": {"AwsIamAccessKey": filter_empty(details)},
+        }
+        return filter_empty(accesskey)
 
 
 @User.action_registry.register('delete')
@@ -1756,8 +1758,9 @@ class UserDelete(BaseAction):
 
     def process(self, resources):
         client = local_session(self.manager.session_factory).client('iam')
-        self.log.debug('Deleting user %s options: %s' %
-            (len(resources), self.data.get('options', 'all')))
+        self.log.debug(
+            f"Deleting user {len(resources)} options: {self.data.get('options', 'all')}"
+        )
         for r in resources:
             self.process_user(client, r)
 
@@ -1839,9 +1842,8 @@ class UserRemoveAccessKey(BaseAction):
                 keys = m_keys
 
             for k in keys:
-                if age:
-                    if not k['CreateDate'] < threshold_date:
-                        continue
+                if age and not k['CreateDate'] < threshold_date:
+                    continue
                 if disable:
                     client.update_access_key(
                         UserName=r['UserName'],

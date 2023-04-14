@@ -510,10 +510,10 @@ class RDSClusterSnapshotDelete(BaseAction):
         client = local_session(self.manager.session_factory).client('rds')
         error = None
         with self.executor_factory(max_workers=2) as w:
-            futures = []
-            for snapshot_set in chunks(reversed(snapshots), size=50):
-                futures.append(
-                    w.submit(self.process_snapshot_set, client, snapshot_set))
+            futures = [
+                w.submit(self.process_snapshot_set, client, snapshot_set)
+                for snapshot_set in chunks(reversed(snapshots), size=50)
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     error = f.exception()

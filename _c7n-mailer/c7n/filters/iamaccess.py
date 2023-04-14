@@ -52,9 +52,7 @@ log = logging.getLogger('custodian.iamaccess')
 def _account(arn):
     # we could try except but some minor runtime cost, basically flag
     # invalids values
-    if ':' not in arn:
-        return arn
-    return arn.split(':', 5)[4]
+    return arn if ':' not in arn else arn.split(':', 5)[4]
 
 
 class PolicyChecker(object):
@@ -105,11 +103,7 @@ class PolicyChecker(object):
         else:
             policy = policy_text
 
-        violations = []
-        for s in policy.get('Statement', ()):
-            if self.handle_statement(s):
-                violations.append(s)
-        return violations
+        return [s for s in policy.get('Statement', ()) if self.handle_statement(s)]
 
     def handle_statement(self, s):
         if (all((self.handle_principal(s),
@@ -120,11 +114,8 @@ class PolicyChecker(object):
     def handle_action(self, s):
         if self.check_actions:
             actions = s.get('Action')
-            actions = isinstance(actions, six.string_types) and (actions,) or actions
-            for a in actions:
-                if fnmatch.filter(self.check_actions, a):
-                    return True
-            return False
+            actions = (actions, ) if isinstance(actions, six.string_types) else actions
+            return any(fnmatch.filter(self.check_actions, a) for a in actions)
         return True
 
     def handle_effect(self, s):
@@ -142,7 +133,7 @@ class PolicyChecker(object):
             if not s['Principal']:
                 return False
 
-        assert len(s['Principal']) == 1, "Too many principals %s" % s
+        assert len(s['Principal']) == 1, f"Too many principals {s}"
 
         if isinstance(s['Principal'], six.string_types):
             p = s['Principal']
@@ -154,7 +145,7 @@ class PolicyChecker(object):
             return True
 
         principal_ok = True
-        p = isinstance(p, six.string_types) and (p,) or p
+        p = (p, ) if isinstance(p, six.string_types) else p
         for pid in p:
             if pid == '*':
                 principal_ok = False
@@ -173,10 +164,7 @@ class PolicyChecker(object):
         if not conditions:
             return False
 
-        results = []
-        for c in conditions:
-            results.append(self.handle_condition(s, c))
-
+        results = [self.handle_condition(s, c) for c in conditions]
         return all(results)
 
     def handle_condition(self, s, c):
@@ -184,11 +172,12 @@ class PolicyChecker(object):
             return False
         if c['key'] in self.whitelist_conditions:
             return True
-        handler_name = "handle_%s" % c['key'].replace('-', '_').replace(':', '_')
+        handler_name = f"handle_{c['key'].replace('-', '_').replace(':', '_')}"
         handler = getattr(self, handler_name, None)
         if handler is None:
-            log.warning("no handler:%s op:%s key:%s values:%s" % (
-                handler_name, c['op'], c['key'], c['values']))
+            log.warning(
+                f"no handler:{handler_name} op:{c['op']} key:{c['key']} values:{c['values']}"
+            )
             return
         return not handler(s, c)
 
@@ -210,15 +199,18 @@ class PolicyChecker(object):
         for s_cond_op in list(s['Condition'].keys()):
             cond = {'op': s_cond_op}
 
-            if s_cond_op not in conditions:
-                if not any(s_cond_op.startswith(c) for c in set_conditions):
-                    continue
+            if s_cond_op not in conditions and not any(
+                s_cond_op.startswith(c) for c in set_conditions
+            ):
+                continue
 
             cond['key'] = list(s['Condition'][s_cond_op].keys())[0]
             cond['values'] = s['Condition'][s_cond_op][cond['key']]
             cond['values'] = (
-                isinstance(cond['values'],
-                           six.string_types) and (cond['values'],) or cond['values'])
+                (cond['values'],)
+                if isinstance(cond['values'], six.string_types)
+                else cond['values']
+            )
             cond['key'] = cond['key'].lower()
             s_cond.append(cond)
 
@@ -242,19 +234,25 @@ class PolicyChecker(object):
         return False
 
     def handle_aws_sourcevpce(self, s, c):
-        if not self.allowed_vpce:
-            return False
-        return bool(set(map(_account, c['values'])).difference(self.allowed_vpce))
+        return (
+            bool(set(map(_account, c['values'])).difference(self.allowed_vpce))
+            if self.allowed_vpce
+            else False
+        )
 
     def handle_aws_sourcevpc(self, s, c):
-        if not self.allowed_vpc:
-            return False
-        return bool(set(map(_account, c['values'])).difference(self.allowed_vpc))
+        return (
+            bool(set(map(_account, c['values'])).difference(self.allowed_vpc))
+            if self.allowed_vpc
+            else False
+        )
 
     def handle_aws_principalorgid(self, s, c):
-        if not self.allowed_orgid:
-            return False
-        return bool(set(map(_account, c['values'])).difference(self.allowed_orgid))
+        return (
+            bool(set(map(_account, c['values'])).difference(self.allowed_orgid))
+            if self.allowed_orgid
+            else False
+        )
 
 
 class CrossAccountAccessFilter(Filter):
@@ -343,7 +341,6 @@ class CrossAccountAccessFilter(Filter):
         p = self.get_resource_policy(r)
         if p is None:
             return False
-        violations = self.checker.check(p)
-        if violations:
+        if violations := self.checker.check(p):
             r[self.annotation_key] = violations
             return True

@@ -56,6 +56,8 @@ class MLJob(QueryResourceManager):
         @staticmethod
         def get(client, event):
             return client.execute_query(
-                'get', {'name': 'projects/{}/jobs/{}'.format(
-                    jmespath.search('resource.labels.project_id', event),
-                    jmespath.search('protoPayload.response.jobId', event))})
+                'get',
+                {
+                    'name': f"projects/{jmespath.search('resource.labels.project_id', event)}/jobs/{jmespath.search('protoPayload.response.jobId', event)}"
+                },
+            )

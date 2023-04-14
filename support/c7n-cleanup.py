@@ -28,15 +28,23 @@ mugc_script = wget.download(mugc_script_url)
 def policies_list():
     policiesArray = []
     try:
-        files = [nonprod_compliance_policies_dir + '/' + 'global', nonprod_compliance_policies_dir + '/' + 'regional', nonprod_opertional_policies_dir + '/' + 'global', nonprod_opertional_policies_dir + '/' + 'regional', prod_compliance_policies_dir + '/' + 'global', prod_compliance_policies_dir + '/' + 'regional', prod_opertional_policies_dir + '/' + 'regional', prod_opertional_policies_dir + '/' + 'global']
+        files = [
+            f'{nonprod_compliance_policies_dir}/global',
+            f'{nonprod_compliance_policies_dir}/regional',
+            f'{nonprod_opertional_policies_dir}/global',
+            f'{nonprod_opertional_policies_dir}/regional',
+            f'{prod_compliance_policies_dir}/global',
+            f'{prod_compliance_policies_dir}/regional',
+            f'{prod_opertional_policies_dir}/regional',
+            f'{prod_opertional_policies_dir}/global',
+        ]
         for i in files:
             for file in os.listdir(i):
                 if file.endswith(".yml"):
-                    updatedName = '-c ' + i + '/' + file
+                    updatedName = f'-c {i}/{file}'
                     policiesArray.append(updatedName)
     except:
         print("no global policies exists..")
-        pass
     return policiesArray
 
 def main(arn, session_name):
@@ -61,15 +69,15 @@ def main(arn, session_name):
     os.environ["AWS_ACCESS_KEY_ID"] = slaveResponse['Credentials']['AccessKeyId']
     os.environ["AWS_SECRET_ACCESS_KEY"] = slaveResponse['Credentials']['SecretAccessKey']
     os.environ["AWS_SESSION_TOKEN"] = slaveResponse['Credentials']['SessionToken'] 
-    
+
     print ("slave account: ", account_id)
     client = slaveSession.client('ec2')
     regions = [region['RegionName'] for region in client.describe_regions()['Regions']]
     print("starting cleanup...")
     listOfPolicies =  ' '.join(policies_list())
     for region in regions:
-        print("python mugc.py -r %s -c %s" %(region, listOfPolicies))
-        os.system("python mugc.py -r %s -c %s" %(region, listOfPolicies))
+        print(f"python mugc.py -r {region} -c {listOfPolicies}")
+        os.system(f"python mugc.py -r {region} -c {listOfPolicies}")
 
 
 sessionName = 'master_session'

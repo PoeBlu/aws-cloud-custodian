@@ -103,18 +103,16 @@ def _default_region(options):
                   'or setting a region in ~/.aws/config')
         sys.exit(1)
 
-    log.debug("using default region:%s from boto" % options.regions[0])
+    log.debug(f"using default region:{options.regions[0]} from boto")
 
 
 def _default_account_id(options):
     if options.account_id:
         return
     elif options.assume_role:
-        try:
+        with contextlib.suppress(IndexError):
             options.account_id = options.assume_role.split(':')[4]
             return
-        except IndexError:
-            pass
     try:
         session = get_profile_session(options)
         options.account_id = utils.get_account_id_from_sts(session)
@@ -166,9 +164,11 @@ class ArnResolver(object):
                 continue
             if arn.service != (klass.resource_type.arn_service or klass.resource_type.service):
                 continue
-            if (type_name in ('asg', 'ecs-task') and
-                    "%s%s" % (klass.resource_type.arn_type, klass.resource_type.arn_separator)
-                    in arn.resource_type):
+            if (
+                type_name in ('asg', 'ecs-task')
+                and f"{klass.resource_type.arn_type}{klass.resource_type.arn_separator}"
+                in arn.resource_type
+            ):
                 return type_name
             elif (klass.resource_type.arn_type is not None and
                     klass.resource_type.arn_type == arn.resource_type):
@@ -188,8 +188,13 @@ class MetricsOutput(Metrics):
         self.namespace = self.config.get('namespace', DEFAULT_NAMESPACE)
         self.region = self.config.get('region')
         self.destination = (
-            self.config.scheme == 'aws' and
-            self.config.get('netloc') == 'master') and 'master' or None
+            'master'
+            if (
+                self.config.scheme == 'aws'
+                and self.config.get('netloc') == 'master'
+            )
+            else None
+        )
 
     def _format_metric(self, key, value, unit, dimensions):
         d = {
@@ -237,10 +242,7 @@ class CloudWatchLogOutput(LogOutput):
                 assume=False))
 
     def __repr__(self):
-        return "<%s to group:%s stream:%s>" % (
-            self.__class__.__name__,
-            self.ctx.options.log_group,
-            self.ctx.policy.name)
+        return f"<{self.__class__.__name__} to group:{self.ctx.options.log_group} stream:{self.ctx.policy.name}>"
 
 
 class XrayEmitter(object):
@@ -388,8 +390,7 @@ class ApiStats(DeltaStats):
             'after-call.*.*', self._record, unique_id='c7n-api-stats')
 
     def _record(self, http_response, parsed, model, **kwargs):
-        self.api_calls["%s.%s" % (
-            model.service_model.endpoint_prefix, model.name)] += 1
+        self.api_calls[f"{model.service_model.endpoint_prefix}.{model.name}"] += 1
 
 
 @blob_outputs.register('s3')
@@ -416,10 +417,7 @@ class S3Output(DirectoryOutput):
         self.transfer = None
 
     def __repr__(self):
-        return "<%s to bucket:%s prefix:%s>" % (
-            self.__class__.__name__,
-            self.bucket,
-            self.key_prefix)
+        return f"<{self.__class__.__name__} to bucket:{self.bucket} prefix:{self.key_prefix}>"
 
     def get_output_path(self, output_url):
         if '{' not in output_url:
@@ -447,10 +445,7 @@ class S3Output(DirectoryOutput):
     def upload(self):
         for root, dirs, files in os.walk(self.root_dir):
             for f in files:
-                key = "%s%s" % (
-                    self.key_prefix,
-                    "%s/%s" % (
-                        root[len(self.root_dir):], f))
+                key = f"{self.key_prefix}{root[len(self.root_dir):]}/{f}"
                 key = key.strip('/')
                 self.transfer.upload_file(
                     os.path.join(root, f), self.bucket, key,
@@ -534,8 +529,7 @@ class AWS(object):
 
                 if len(options.regions) > 1 or 'all' in options.regions and getattr(
                         options, 'output_dir', None):
-                    options_copy.output_dir = (
-                        options.output_dir.rstrip('/') + '/%s' % region)
+                    options_copy.output_dir = options.output_dir.rstrip('/') + f'/{region}'
                 policies.append(
                     Policy(p.data, options_copy,
                            session_factory=policy_collection.session_factory()))
@@ -549,11 +543,11 @@ class AWS(object):
 
 
 def fake_session():
-    session = boto3.Session(
+    return boto3.Session(
         region_name='us-east-1',
         aws_access_key_id='never',
-        aws_secret_access_key='found')
-    return session
+        aws_secret_access_key='found',
+    )
 
 
 def get_service_region_map(regions, resource_types):
@@ -578,13 +572,11 @@ def get_service_region_map(regions, resource_types):
             partition_regions[r] = p
 
     partitions = ['aws']
-    for r in regions:
-        if r in partition_regions:
-            partitions.append(partition_regions[r])
-
+    partitions.extend(
+        partition_regions[r] for r in regions if r in partition_regions
+    )
     service_region_map = {}
-    for s in set(itertools.chain(resource_service_map.values())):
-        for partition in partitions:
-            service_region_map.setdefault(s, []).extend(
-                session.get_available_regions(s, partition_name=partition))
+    for s, partition in itertools.product(set(itertools.chain(resource_service_map.values())), partitions):
+        service_region_map.setdefault(s, []).extend(
+            session.get_available_regions(s, partition_name=partition))
     return service_region_map, resource_service_map

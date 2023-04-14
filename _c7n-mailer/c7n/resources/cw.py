@@ -291,11 +291,10 @@ class LogCrossAccountFilter(CrossAccountAccessFilter):
         accounts = self.get_accounts()
         results = []
         with self.executor_factory(max_workers=1) as w:
-            futures = []
-            for rset in chunks(resources, 50):
-                futures.append(
-                    w.submit(
-                        self.process_resource_set, client, accounts, rset))
+            futures = [
+                w.submit(self.process_resource_set, client, accounts, rset)
+                for rset in chunks(resources, 50)
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
@@ -365,8 +364,7 @@ class EncryptLogGroup(BaseAction):
         if not key:
             raise ValueError('Must specify either a KMS key ARN or Alias')
         if 'alias/' not in key and ':key/' not in key:
-            raise PolicyValidationError(
-                "Invalid kms key format %s" % key)
+            raise PolicyValidationError(f"Invalid kms key format {key}")
         return self
 
     def resolve_key(self, key):

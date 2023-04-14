@@ -165,9 +165,7 @@ class StorageFirewallRulesFilter(FirewallRulesFilter):
 
         ip_rules = resource['properties']['networkAcls']['ipRules']
 
-        resource_rules = IPSet([r['value'] for r in ip_rules])
-
-        return resource_rules
+        return IPSet([r['value'] for r in ip_rules])
 
 
 @Storage.filter_registry.register('storage-diagnostic-settings')
@@ -235,10 +233,9 @@ class StorageDiagnosticSettingsFilter(ValueFilter):
         matched = []
         for resource in resources:
             settings = self._get_settings(resource, session, token)
-            filtered_settings = super(StorageDiagnosticSettingsFilter, self).process([settings],
-                                                                                     event)
-
-            if filtered_settings:
+            if filtered_settings := super(
+                StorageDiagnosticSettingsFilter, self
+            ).process([settings], event):
                 matched.append(resource)
 
         return matched
@@ -246,7 +243,7 @@ class StorageDiagnosticSettingsFilter(ValueFilter):
     def _get_settings(self, storage_account, session=None, token=None):
         storage_prefix_property = get_annotation_prefix(self.storage_type)
 
-        if not (storage_prefix_property in storage_account):
+        if storage_prefix_property not in storage_account:
             settings = StorageSettingsUtilities.get_settings(
                 self.storage_type, storage_account, session, token)
             storage_account[storage_prefix_property] = json.loads(jsonpickle.encode(settings))
@@ -368,24 +365,28 @@ class StorageSettingsUtilities(object):
 
     @staticmethod
     def _get_client(storage_type, storage_account, session=None, token=None):
-        if storage_type == TABLE_TYPE or storage_type == FILE_TYPE:
-            client = getattr(StorageSettingsUtilities, '_get_{}_client_from_storage_account'
-                             .format(storage_type))(storage_account, session)
-        else:
-            client = getattr(StorageSettingsUtilities, '_get_{}_client_from_storage_account'
-                             .format(storage_type))(storage_account, token)
-
-        return client
+        return (
+            getattr(
+                StorageSettingsUtilities,
+                f'_get_{storage_type}_client_from_storage_account',
+            )(storage_account, session)
+            if storage_type in [TABLE_TYPE, FILE_TYPE]
+            else getattr(
+                StorageSettingsUtilities,
+                f'_get_{storage_type}_client_from_storage_account',
+            )(storage_account, token)
+        )
 
     @staticmethod
     def get_settings(storage_type, storage_account, session=None, token=None):
         client = StorageSettingsUtilities._get_client(storage_type, storage_account, session, token)
 
-        return getattr(client, 'get_{}_service_properties'.format(storage_type))()
+        return getattr(client, f'get_{storage_type}_service_properties')()
 
     @staticmethod
     def update_logging(storage_type, storage_account, logging_settings, session=None, token=None):
         client = StorageSettingsUtilities._get_client(storage_type, storage_account, session, token)
 
-        return getattr(client, 'set_{}_service_properties'
-                       .format(storage_type))(logging=logging_settings)
+        return getattr(client, f'set_{storage_type}_service_properties')(
+            logging=logging_settings
+        )

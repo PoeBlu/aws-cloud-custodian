@@ -105,7 +105,7 @@ class HealthEventFilter(Filter):
         return entities
 
     @classmethod
-    def register_resources(klass, registry, resource_class):
+    def register_resources(cls, registry, resource_class):
         """ meta model subscriber on resource registration.
 
         We watch for PHD event that provides affected entities and register
@@ -115,7 +115,7 @@ class HealthEventFilter(Filter):
                     'dynamodb-table', 'cache-cluster', 'efs', 'app-elb', 'elb', 'emr', 'rds',
                     'storage-gateway'}
         if resource_class.type in services:
-            resource_class.filter_registry.register('health-event', klass)
+            resource_class.filter_registry.register('health-event', cls)
 
 
 resources.subscribe(resources.EVENT_REGISTER, HealthEventFilter.register_resources)

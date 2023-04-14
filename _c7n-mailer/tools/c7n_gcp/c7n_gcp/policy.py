@@ -74,8 +74,8 @@ class PeriodicMode(FunctionMode, PullMode):
         mode = self.policy.data['mode']
         if 'tz' in mode:
             error = PolicyValidationError(
-                "policy:%s gcp-periodic invalid tz:%s" % (
-                    self.policy.name, mode['tz']))
+                f"policy:{self.policy.name} gcp-periodic invalid tz:{mode['tz']}"
+            )
             # We can't catch all errors statically, our local tz retrieval
             # then the form gcp is using, ie. not all the same aliases are
             # defined.
@@ -129,8 +129,8 @@ class ApiAuditMode(FunctionMode):
     def validate(self):
         if not self.policy.resource_manager.resource_type.get:
             raise PolicyValidationError(
-                "Resource:%s does not implement retrieval method" % (
-                    self.policy.resource_type))
+                f"Resource:{self.policy.resource_type} does not implement retrieval method"
+            )
 
     def run(self, event, context):
         """Execute a gcp serverless model"""

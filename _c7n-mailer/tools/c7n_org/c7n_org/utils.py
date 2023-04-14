@@ -9,7 +9,7 @@ def account_tags(account):
         if ':' not in t:
             continue
         k, v = t.split(':', 1)
-        k = 'Account%s' % k.capitalize()
+        k = f'Account{k.capitalize()}'
         tags[k] = v
     return tags
 
@@ -23,7 +23,7 @@ def environ(**kw):
     try:
         yield os.environ
     finally:
-        for k in kw.keys():
+        for k in kw:
             del os.environ[k]
-        os.environ.update(current_env)
+        os.environ |= current_env
         reset_session_cache()

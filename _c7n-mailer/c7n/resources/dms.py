@@ -69,11 +69,10 @@ class InstanceDescribe(DescribeSource):
     def augment(self, resources):
         client = local_session(self.manager.session_factory).client('dms')
         with self.manager.executor_factory(max_workers=2) as w:
-            futures = []
-            for resource_set in chunks(resources, 20):
-                futures.append(
-                    w.submit(self.process_resource_set, client, resources))
-
+            futures = [
+                w.submit(self.process_resource_set, client, resources)
+                for _ in chunks(resources, 20)
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.manager.log.warning(
@@ -83,7 +82,7 @@ class InstanceDescribe(DescribeSource):
 
     def process_resource_set(self, client, resources):
         for arn, r in zip(self.manager.get_arns(resources), resources):
-            self.manager.log.info("arn %s" % arn)
+            self.manager.log.info(f"arn {arn}")
             try:
                 r['Tags'] = client.list_tags_for_resource(
                     ResourceArn=arn).get('TagList', [])

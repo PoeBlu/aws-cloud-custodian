@@ -73,8 +73,8 @@ class DeleteBackup(BaseAction):
                 client.delete_backup(BackupId=r['BackupId'])
             except client.exceptions.BackupRestoring as e:
                 self.log.warning(
-                    'Unable to delete backup for: %s - %s - %s' % (
-                        r['FileSystemId'], r['BackupId'], e))
+                    f"Unable to delete backup for: {r['FileSystemId']} - {r['BackupId']} - {e}"
+                )
 
 
 FSxBackup.filter_registry.register('marked-for-op', TagActionFilter)
@@ -233,8 +233,7 @@ class BackupFileSystem(BaseAction):
                         FileSystemId=r['FileSystemId']
                     )
             except client.exceptions.BackupInProgress as e:
-                self.log.warning(
-                    'Unable to create backup for: %s - %s' % (r['FileSystemId'], e))
+                self.log.warning(f"Unable to create backup for: {r['FileSystemId']} - {e}")
 
 
 @FSx.action_registry.register('delete')
@@ -310,7 +309,7 @@ class DeleteFileSystem(BaseAction):
                     WindowsConfiguration=config
                 )
             except client.exceptions.BadRequest as e:
-                self.log.warning('Unable to delete: %s - %s' % (r['FileSystemId'], e))
+                self.log.warning(f"Unable to delete: {r['FileSystemId']} - {e}")
 
 
 @FSx.filter_registry.register('kms-key')

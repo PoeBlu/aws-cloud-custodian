@@ -90,8 +90,7 @@ class Snapshot(QueryResourceManager):
             try:
                 return self.source.get_resources(ids)
             except ClientError as e:
-                bad_snap = ErrorHandler.extract_bad_snapshot(e)
-                if bad_snap:
+                if bad_snap := ErrorHandler.extract_bad_snapshot(e):
                     ids.remove(bad_snap)
                     continue
                 raise
@@ -102,12 +101,9 @@ class ErrorHandler(object):
 
     @staticmethod
     def remove_snapshot(rid, resource_set):
-        found = None
-        for r in resource_set:
-            if r['SnapshotId'] == rid:
-                found = r
-                break
-        if found:
+        if found := next(
+            (r for r in resource_set if r['SnapshotId'] == rid), None
+        ):
             resource_set.remove(found)
 
     @staticmethod
@@ -118,10 +114,10 @@ class ErrorHandler(object):
         e_snap_id = None
         if error == 'InvalidSnapshot.NotFound':
             e_snap_id = msg[msg.find("'") + 1:msg.rfind("'")]
-            log.warning("Snapshot not found %s" % e_snap_id)
+            log.warning(f"Snapshot not found {e_snap_id}")
         elif error == 'InvalidSnapshotID.Malformed':
             e_snap_id = msg[msg.find('"') + 1:msg.rfind('"')]
-            log.warning("Snapshot id malformed %s" % e_snap_id)
+            log.warning(f"Snapshot id malformed {e_snap_id}")
         return e_snap_id
 
 
@@ -155,8 +151,7 @@ class SnapshotTag(Tag):
                 return super(SnapshotTag, self).process_resource_set(
                     client, resource_set, tags)
             except ClientError as e:
-                bad_snap = ErrorHandler.extract_bad_snapshot(e)
-                if bad_snap:
+                if bad_snap := ErrorHandler.extract_bad_snapshot(e):
                     ErrorHandler.remove_snapshot(bad_snap, resource_set)
                     continue
                 raise
@@ -196,14 +191,12 @@ def _filter_ami_snapshots(self, snapshots):
     amis = self.manager.get_resource_manager('ami').resources()
     ami_snaps = []
     for i in amis:
-        for dev in i.get('BlockDeviceMappings'):
-            if 'Ebs' in dev and 'SnapshotId' in dev['Ebs']:
-                ami_snaps.append(dev['Ebs']['SnapshotId'])
-    matches = []
-    for snap in snapshots:
-        if snap['SnapshotId'] not in ami_snaps:
-            matches.append(snap)
-    return matches
+        ami_snaps.extend(
+            dev['Ebs']['SnapshotId']
+            for dev in i.get('BlockDeviceMappings')
+            if 'Ebs' in dev and 'SnapshotId' in dev['Ebs']
+        )
+    return [snap for snap in snapshots if snap['SnapshotId'] not in ami_snaps]
 
 
 @Snapshot.filter_registry.register('cross-account')
@@ -216,10 +209,10 @@ class SnapshotCrossAccountAccess(CrossAccountAccessFilter):
         results = []
         client = local_session(self.manager.session_factory).client('ec2')
         with self.executor_factory(max_workers=3) as w:
-            futures = []
-            for resource_set in chunks(resources, 50):
-                futures.append(w.submit(
-                    self.process_resource_set, client, resource_set))
+            futures = [
+                w.submit(self.process_resource_set, client, resource_set)
+                for resource_set in chunks(resources, 50)
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
@@ -238,8 +231,7 @@ class SnapshotCrossAccountAccess(CrossAccountAccessFilter):
                 Attribute='createVolumePermission')['CreateVolumePermissions']
             shared_accounts = {
                 g.get('Group') or g.get('UserId') for g in attrs}
-            delta_accounts = shared_accounts.difference(self.accounts)
-            if delta_accounts:
+            if delta_accounts := shared_accounts.difference(self.accounts):
                 r['c7n:CrossAccountViolations'] = list(delta_accounts)
                 results.append(r)
         return results
@@ -275,7 +267,11 @@ class SnapshotUnusedFilter(Filter):
     def _pull_asg_snapshots(self):
         asgs = self.manager.get_resource_manager('asg').resources()
         snap_ids = set()
-        lcfgs = set(a['LaunchConfigurationName'] for a in asgs if 'LaunchConfigurationName' in a)
+        lcfgs = {
+            a['LaunchConfigurationName']
+            for a in asgs
+            if 'LaunchConfigurationName' in a
+        }
         lcfg_mgr = self.manager.get_resource_manager('launch-config')
 
         if lcfgs:
@@ -354,8 +350,7 @@ class SnapshotSkipAmiSnapshots(Filter):
         return AMI(self.manager.ctx, {}).get_permissions()
 
     def process(self, snapshots, event=None):
-        resources = _filter_ami_snapshots(self, snapshots)
-        return resources
+        return _filter_ami_snapshots(self, snapshots)
 
 
 @Snapshot.action_registry.register('delete')
@@ -394,10 +389,10 @@ class SnapshotDelete(BaseAction):
 
         client = local_session(self.manager.session_factory).client('ec2')
         with self.executor_factory(max_workers=2) as w:
-            futures = []
-            for snapshot_set in chunks(reversed(snapshots), size=50):
-                futures.append(
-                    w.submit(self.process_snapshot_set, client, snapshot_set))
+            futures = [
+                w.submit(self.process_snapshot_set, client, snapshot_set)
+                for snapshot_set in chunks(reversed(snapshots), size=50)
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
@@ -460,8 +455,8 @@ class CopySnapshot(BaseAction):
             key = self.data.get('target_key')
             if not key:
                 raise PolicyValidationError(
-                    "Encrypted snapshot copy requires kms key on %s" % (
-                        self.manager.data,))
+                    f"Encrypted snapshot copy requires kms key on {self.manager.data}"
+                )
         return self
 
     def process(self, resources):
@@ -480,8 +475,7 @@ class CopySnapshot(BaseAction):
         if self.data['target_region'] != self.manager.config.region:
             cross_region = True
 
-        params = {}
-        params['Encrypted'] = self.data.get('encrypted', True)
+        params = {'Encrypted': self.data.get('encrypted', True)}
         if params['Encrypted']:
             params['KmsKeyId'] = self.data['target_key']
 
@@ -605,7 +599,7 @@ class AttachedInstanceFilter(ValueFilter):
         instance = self.instance_map[r['Attachments'][0]['InstanceId']]
         if self.match(instance):
             r['Instance'] = instance
-            set_annotation(r, ANNOTATION_KEY, "instance-%s" % self.k)
+            set_annotation(r, ANNOTATION_KEY, f"instance-{self.k}")
             return True
 
     def get_instance_mapping(self, resources):
@@ -767,11 +761,12 @@ class CopyInstanceTags(BaseAction):
         self.initialize(volumes)
         client = local_session(self.manager.session_factory).client('ec2')
         with self.executor_factory(max_workers=10) as w:
-            futures = []
-            for instance_set in chunks(sorted(
-                    self.instance_map.keys(), reverse=True), size=100):
-                futures.append(
-                    w.submit(self.process_instance_set, client, instance_set))
+            futures = [
+                w.submit(self.process_instance_set, client, instance_set)
+                for instance_set in chunks(
+                    sorted(self.instance_map.keys(), reverse=True), size=100
+                )
+            ]
             for f in as_completed(futures):
                 if f.exception():
                     self.log.error(
@@ -812,9 +807,8 @@ class CopyInstanceTags(BaseAction):
             # to delete extant ones inline, else trim-tags action.
             if len(copy_tags) > 40:
                 log.warning(
-                    "action:%s volume:%s instance:%s too many tags to copy" % (
-                        self.__class__.__name__.lower(),
-                        v['VolumeId'], instance['InstanceId']))
+                    f"action:{self.__class__.__name__.lower()} volume:{v['VolumeId']} instance:{instance['InstanceId']} too many tags to copy"
+                )
                 continue
             try:
                 self.manager.retry(
@@ -834,7 +828,7 @@ class CopyInstanceTags(BaseAction):
             (t['Key'], t['Value']) for t in volume.get('Tags', [])])
 
         for t in instance.get('Tags', ()):
-            if only_tags and not t['Key'] in only_tags:
+            if only_tags and t['Key'] not in only_tags:
                 continue
             if t['Key'] in extant_tags and t['Value'] == extant_tags[t['Key']]:
                 continue
@@ -844,14 +838,18 @@ class CopyInstanceTags(BaseAction):
 
         # Don't add attachment tags if we're already current
         if 'LastAttachInstance' in extant_tags \
-           and extant_tags['LastAttachInstance'] == attachment['InstanceId']:
+               and extant_tags['LastAttachInstance'] == attachment['InstanceId']:
             return copy_tags
 
-        copy_tags.append(
-            {'Key': 'LastAttachTime',
-             'Value': attachment['AttachTime'].isoformat()})
-        copy_tags.append(
-            {'Key': 'LastAttachInstance', 'Value': attachment['InstanceId']})
+        copy_tags.extend(
+            (
+                {
+                    'Key': 'LastAttachTime',
+                    'Value': attachment['AttachTime'].isoformat(),
+                },
+                {'Key': 'LastAttachInstance', 'Value': attachment['InstanceId']},
+            )
+        )
         return copy_tags
 
 
@@ -943,12 +941,12 @@ class EncryptInstanceVolumes(BaseAction):
         client = local_session(self.manager.session_factory).client('ec2')
 
         with self.executor_factory(max_workers=3) as w:
-            futures = {}
-            for instance_id, vol_set in instance_vol_map.items():
-                futures[w.submit(
-                    self.process_volume, client,
-                    instance_id, vol_set)] = instance_id
-
+            futures = {
+                w.submit(
+                    self.process_volume, client, instance_id, vol_set
+                ): instance_id
+                for instance_id, vol_set in instance_vol_map.items()
+            }
             for f in as_completed(futures):
                 if f.exception():
                     instance_id = futures[f]
@@ -964,7 +962,7 @@ class EncryptInstanceVolumes(BaseAction):
         """
         key_id = self.get_encryption_key()
         if self.verbose:
-            self.log.debug("Using encryption key: %s" % key_id)
+            self.log.debug(f"Using encryption key: {key_id}")
 
         # Only stop and start the instance if it was running.
         instance_running = self.stop_instance(client, instance_id)
@@ -1006,8 +1004,7 @@ class EncryptInstanceVolumes(BaseAction):
             client.start_instances(InstanceIds=[instance_id])
 
         if self.verbose:
-            self.log.debug(
-                "Deleting unencrypted volumes for: %s" % instance_id)
+            self.log.debug(f"Deleting unencrypted volumes for: {instance_id}")
 
         for v in vol_set:
             client.delete_volume(VolumeId=v['VolumeId'])
@@ -1026,7 +1023,7 @@ class EncryptInstanceVolumes(BaseAction):
     def stop_instance(self, client, instance_id):
         instance_state = self.instance_map[instance_id]['State']['Name']
         if instance_state in ('shutting-down', 'terminated'):
-            self.log.debug('Skipping terminating instance: %s' % instance_id)
+            self.log.debug(f'Skipping terminating instance: {instance_id}')
             return
         elif instance_state in ('running',):
             client.stop_instances(InstanceIds=[instance_id])
@@ -1088,8 +1085,7 @@ class EncryptInstanceVolumes(BaseAction):
         kms = local_session(self.manager.session_factory).client('kms')
         key_alias = self.data.get('key')
         result = kms.describe_key(KeyId=key_alias)
-        key_id = result['KeyMetadata']['KeyId']
-        return key_id
+        return result['KeyMetadata']['KeyId']
 
     def wait_on_resource(self, *args, **kw):
         # Sigh this is dirty, but failure in the middle of our workflow
@@ -1113,26 +1109,25 @@ class EncryptInstanceVolumes(BaseAction):
         # boto client waiters poll every 15 seconds up to a max 600s (5m)
         if snapshot_id:
             if self.verbose:
-                self.log.debug(
-                    "Waiting on snapshot completion %s" % snapshot_id)
+                self.log.debug(f"Waiting on snapshot completion {snapshot_id}")
             waiter = client.get_waiter('snapshot_completed')
             waiter.wait(SnapshotIds=[snapshot_id])
             if self.verbose:
-                self.log.debug("Snapshot: %s completed" % snapshot_id)
+                self.log.debug(f"Snapshot: {snapshot_id} completed")
         elif volume_id:
             if self.verbose:
-                self.log.debug("Waiting on volume creation %s" % volume_id)
+                self.log.debug(f"Waiting on volume creation {volume_id}")
             waiter = client.get_waiter('volume_available')
             waiter.wait(VolumeIds=[volume_id])
             if self.verbose:
-                self.log.debug("Volume: %s created" % volume_id)
+                self.log.debug(f"Volume: {volume_id} created")
         elif instance_id:
             if self.verbose:
                 self.log.debug("Waiting on instance stop")
             waiter = client.get_waiter('instance_stopped')
             waiter.wait(InstanceIds=[instance_id])
             if self.verbose:
-                self.log.debug("Instance: %s stopped" % instance_id)
+                self.log.debug(f"Instance: {instance_id} stopped")
 
 
 @EBS.action_registry.register('snapshot')
@@ -1199,10 +1194,7 @@ class Delete(BaseAction):
     def process(self, volumes):
         client = local_session(self.manager.session_factory).client('ec2')
         with self.executor_factory(max_workers=3) as w:
-            futures = {}
-            for v in volumes:
-                futures[
-                    w.submit(self.process_volume, client, v)] = v
+            futures = {w.submit(self.process_volume, client, v): v for v in volumes}
             for f in as_completed(futures):
                 v = futures[f]
                 if f.exception():

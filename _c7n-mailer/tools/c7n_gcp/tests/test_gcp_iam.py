@@ -87,4 +87,4 @@ class IAMRoleTest(BaseTest):
             "name": name,
         })
 
-        self.assertEqual(resource['name'], 'roles/{}'.format(name))
+        self.assertEqual(resource['name'], f'roles/{name}')

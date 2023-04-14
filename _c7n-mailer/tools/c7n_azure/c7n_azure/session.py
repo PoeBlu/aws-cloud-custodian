@@ -141,7 +141,7 @@ class Session(object):
         if self.subscription_id_override is not None:
             self.subscription_id = self.subscription_id_override
 
-        self.log.info("Session using Subscription ID: %s" % self.subscription_id)
+        self.log.info(f"Session using Subscription ID: {self.subscription_id}")
 
         if self.credentials is None:
             self.log.error('Unable to locate credentials for Azure session.')

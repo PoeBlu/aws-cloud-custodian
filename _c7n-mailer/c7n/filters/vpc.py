@@ -72,12 +72,13 @@ class DefaultVpcBase(Filter):
 
     def match(self, vpc_id):
         if self.default_vpc is None:
-            self.log.debug("querying default vpc %s" % vpc_id)
+            self.log.debug(f"querying default vpc {vpc_id}")
             client = local_session(self.manager.session_factory).client('ec2')
-            vpcs = [v['VpcId'] for v
-                    in client.describe_vpcs()['Vpcs']
-                    if v['IsDefault']]
-            if vpcs:
+            if vpcs := [
+                v['VpcId']
+                for v in client.describe_vpcs()['Vpcs']
+                if v['IsDefault']
+            ]:
                 self.default_vpc = vpcs.pop()
         return vpc_id == self.default_vpc and True or False
 
@@ -145,13 +146,13 @@ class NetworkLocation(Filter):
         rfilters = self.manager.filter_registry.keys()
         if 'subnet' not in rfilters:
             raise PolicyValidationError(
-                "network-location requires resource subnet filter availability on %s" % (
-                    self.manager.data))
+                f"network-location requires resource subnet filter availability on {self.manager.data}"
+            )
 
         if 'security-group' not in rfilters:
             raise PolicyValidationError(
-                "network-location requires resource security-group filter availability on %s" % (
-                    self.manager.data))
+                f"network-location requires resource security-group filter availability on {self.manager.data}"
+            )
         return self
 
     def process(self, resources, event=None):
@@ -178,8 +179,9 @@ class NetworkLocation(Filter):
                 [related_sg[sid] for sid in self.sg.get_related_ids([r])])
             resource_subnets = self.filter_ignored([
                 related_subnet[sid] for sid in self.subnet.get_related_ids([r])])
-            found = self.process_resource(r, resource_sgs, resource_subnets, key)
-            if found:
+            if found := self.process_resource(
+                r, resource_sgs, resource_subnets, key
+            ):
                 results.append(found)
 
         return results
@@ -263,10 +265,11 @@ class NetworkLocation(Filter):
                     'resource': r_value,
                     'subnet': subnet_values})
             if 'security-group' in self.compare and resource_sgs:
-                mismatched_sgs = {sg_id: sg_value
-                                for sg_id, sg_value in sg_values.items()
-                                if sg_value != r_value}
-                if mismatched_sgs:
+                if mismatched_sgs := {
+                    sg_id: sg_value
+                    for sg_id, sg_value in sg_values.items()
+                    if sg_value != r_value
+                }:
                     evaluation.append({
                         'reason': 'SecurityGroupMismatch',
                         'resource': r_value,

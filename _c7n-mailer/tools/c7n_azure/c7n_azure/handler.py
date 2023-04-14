@@ -59,23 +59,22 @@ def run(event, context, subscription_id=None):
 
     options = Azure().initialize(options)
 
-    policies = PolicyCollection.from_data(policy_config, options)
-    if policies:
+    if policies := PolicyCollection.from_data(policy_config, options):
         for p in policies:
             try:
                 p.push(event, context)
             except (CloudError, AzureHttpError) as error:
-                log.error("Unable to process policy: %s :: %s" % (p.name, error))
+                log.error(f"Unable to process policy: {p.name} :: {error}")
 
     reset_session_cache()
     return True
 
 
 def get_tmp_output_dir():
-    output_dir = '/tmp/' + str(uuid.uuid4())
+    output_dir = f'/tmp/{str(uuid.uuid4())}'
     if not os.path.exists(output_dir):
         try:
             os.mkdir(output_dir)
         except OSError as error:
-            log.error("Unable to make output directory: {}".format(error))
+            log.error(f"Unable to make output directory: {error}")
     return output_dir

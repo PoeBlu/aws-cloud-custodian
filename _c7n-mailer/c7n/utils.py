@@ -77,11 +77,8 @@ class VarsSubstitutionError(Exception):
 
 def load_file(path, format=None, vars=None):
     if format is None:
-        format = 'yaml'
         _, ext = os.path.splitext(path)
-        if ext[1:] == 'json':
-            format = 'json'
-
+        format = 'json' if ext[1:] == 'json' else 'yaml'
     with open(path) as fh:
         contents = fh.read()
 
@@ -92,13 +89,13 @@ def load_file(path, format=None, vars=None):
                 msg = 'Failed to substitute variable by positional argument.'
                 raise VarsSubstitutionError(msg)
             except KeyError as e:
-                msg = 'Failed to substitute variables.  KeyError on {}'.format(str(e))
+                msg = f'Failed to substitute variables.  KeyError on {str(e)}'
                 raise VarsSubstitutionError(msg)
 
-        if format == 'yaml':
-            return yaml_load(contents)
-        elif format == 'json':
+        if format == 'json':
             return loads(contents)
+        elif format == 'yaml':
+            return yaml_load(contents)
 
 
 def yaml_load(value):
@@ -149,12 +146,9 @@ def type_schema(
      - required: list of required properties, by default 'type' is required
      - props: additional key value properties
     """
+    type_names = [type_name]
     if aliases:
-        type_names = [type_name]
         type_names.extend(aliases)
-    else:
-        type_names = [type_name]
-
     if rinherit:
         s = copy.deepcopy(rinherit)
         s['properties']['type'] = {'enum': type_names}
@@ -228,7 +222,7 @@ def camelResource(obj):
         return obj
     for k in list(obj.keys()):
         v = obj.pop(k)
-        obj["%s%s" % (k[0].upper(), k[1:])] = v
+        obj[f"{k[0].upper()}{k[1:]}"] = v
         if isinstance(v, dict):
             camelResource(v)
         elif isinstance(v, list):
@@ -315,10 +309,7 @@ def parse_s3(s3_path):
         ridx = None
     bucket = s3_path[5:ridx]
     s3_path = s3_path.rstrip('/')
-    if ridx is None:
-        key_prefix = ""
-    else:
-        key_prefix = s3_path[s3_path.find('/', 5):]
+    key_prefix = "" if ridx is None else s3_path[s3_path.find('/', 5):]
     return s3_path, bucket, key_prefix
 
 
@@ -340,10 +331,9 @@ def generate_arn(
         partition = REGION_PARTITION_MAP[region]
     if service == 's3':
         region = ''
-    arn = 'arn:%s:%s:%s:%s:' % (
-        partition, service, region if region else '', account_id if account_id else '')
+    arn = f"arn:{partition}:{service}:{region if region else ''}:{account_id if account_id else ''}:"
     if resource_type:
-        arn = arn + '%s%s%s' % (resource_type, separator, resource)
+        arn = f'{arn}{resource_type}{separator}{resource}'
     else:
         arn = arn + resource
     return arn
@@ -353,7 +343,7 @@ def snapshot_identifier(prefix, db_identifier):
     """Return an identifier for a snapshot of a database or cluster.
     """
     now = datetime.now()
-    return '%s-%s-%s' % (prefix, db_identifier, now.strftime('%Y-%m-%d-%H-%M'))
+    return f"{prefix}-{db_identifier}-{now.strftime('%Y-%m-%d-%H-%M')}"
 
 
 def get_retry(codes=(), max_attempts=8, min_delay=1, log_retries=False):
@@ -446,10 +436,9 @@ def worker(f):
         try:
             return f(*args, **kw)
         except Exception:
-            worker_log.exception(
-                'Error invoking %s',
-                "%s.%s" % (f.__module__, f.__name__))
+            worker_log.exception('Error invoking %s', f"{f.__module__}.{f.__name__}")
             raise
+
     functools.update_wrapper(_f, f)
     return _f
 
@@ -457,7 +446,7 @@ def worker(f):
 def reformat_schema(model):
     """ Reformat schema to be in a more displayable format. """
     if not hasattr(model, 'schema'):
-        return "Model '{}' does not have a schema".format(model)
+        return f"Model '{model}' does not have a schema"
 
     if 'properties' not in model.schema:
         return "Schema in unexpected format."
@@ -512,15 +501,12 @@ def format_string_values(obj, err_fallback=(IndexError, KeyError), *args, **kwar
     Return the updated object
     """
     if isinstance(obj, dict):
-        new = {}
-        for key in obj.keys():
-            new[key] = format_string_values(obj[key], *args, **kwargs)
-        return new
+        return {
+            key: format_string_values(obj[key], *args, **kwargs)
+            for key in obj.keys()
+        }
     elif isinstance(obj, list):
-        new = []
-        for item in obj:
-            new.append(format_string_values(item, *args, **kwargs))
-        return new
+        return [format_string_values(item, *args, **kwargs) for item in obj]
     elif isinstance(obj, six.string_types):
         try:
             return obj.format(*args, **kwargs)
@@ -587,17 +573,15 @@ class QueryParser(object):
         filters = []
         if not isinstance(data, (tuple, list)):
             raise PolicyValidationError(
-                "%s Query invalid format, must be array of dicts %s" % (
-                    cls.type_name,
-                    data))
+                f"{cls.type_name} Query invalid format, must be array of dicts {data}"
+            )
         for d in data:
             if not isinstance(d, dict):
-                raise PolicyValidationError(
-                    "%s Query Filter Invalid %s" % (cls.type_name, data))
+                raise PolicyValidationError(f"{cls.type_name} Query Filter Invalid {data}")
             if "Name" not in d or cls.value_key not in d:
                 raise PolicyValidationError(
-                    "%s Query Filter Invalid: Missing Key or Values in %s" % (
-                        cls.type_name, data))
+                    f"{cls.type_name} Query Filter Invalid: Missing Key or Values in {data}"
+                )
 
             key = d['Name']
             values = d[cls.value_key]
@@ -611,8 +595,8 @@ class QueryParser(object):
 
             if key not in cls.QuerySchema and not key.startswith('tag:'):
                 raise PolicyValidationError(
-                    "%s Query Filter Invalid Key:%s Valid: %s" % (
-                        cls.type_name, key, ", ".join(cls.QuerySchema.keys())))
+                    f'{cls.type_name} Query Filter Invalid Key:{key} Valid: {", ".join(cls.QuerySchema.keys())}'
+                )
 
             vtype = cls.QuerySchema.get(key)
             if vtype is None and key.startswith('tag'):
@@ -620,19 +604,19 @@ class QueryParser(object):
 
             if not isinstance(values, list):
                 raise PolicyValidationError(
-                    "%s Query Filter Invalid Values, must be array %s" % (
-                        cls.type_name, data,))
+                    f"{cls.type_name} Query Filter Invalid Values, must be array {data}"
+                )
 
             for v in values:
                 if isinstance(vtype, tuple) and vtype != six.string_types:
                     if v not in vtype:
                         raise PolicyValidationError(
-                            "%s Query Filter Invalid Value: %s Valid: %s" % (
-                                cls.type_name, v, ", ".join(vtype)))
+                            f'{cls.type_name} Query Filter Invalid Value: {v} Valid: {", ".join(vtype)}'
+                        )
                 elif not isinstance(v, vtype):
                     raise PolicyValidationError(
-                        "%s Query Filter Invalid Value Type %s" % (
-                            cls.type_name, data,))
+                        f"{cls.type_name} Query Filter Invalid Value Type {data}"
+                    )
 
             filters.append(d)
 
@@ -640,4 +624,4 @@ class QueryParser(object):
 
 
 def get_annotation_prefix(s):
-    return 'c7n:{}'.format(s)
+    return f'c7n:{s}'

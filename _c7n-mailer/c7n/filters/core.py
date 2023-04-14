@@ -47,25 +47,27 @@ ANNOTATION_KEY = "c7n:MatchedFilters"
 
 
 def glob_match(value, pattern):
-    if not isinstance(value, six.string_types):
-        return False
-    return fnmatch.fnmatch(value, pattern)
+    return (
+        fnmatch.fnmatch(value, pattern)
+        if isinstance(value, six.string_types)
+        else False
+    )
 
 
 def regex_match(value, regex):
-    if not isinstance(value, six.string_types):
-        return False
-    # Note python 2.5+ internally cache regex
-    # would be nice to use re2
-    return bool(re.match(regex, value, flags=re.IGNORECASE))
+    return (
+        bool(re.match(regex, value, flags=re.IGNORECASE))
+        if isinstance(value, six.string_types)
+        else False
+    )
 
 
 def regex_case_sensitive_match(value, regex):
-    if not isinstance(value, six.string_types):
-        return False
-    # Note python 2.5+ internally cache regex
-    # would be nice to use re2
-    return bool(re.match(regex, value))
+    return (
+        bool(re.match(regex, value))
+        if isinstance(value, six.string_types)
+        else False
+    )
 
 
 def operator_in(x, y):
@@ -125,10 +127,7 @@ class FilterRegistry(PluginRegistry):
         self.register('event', EventFilter)
 
     def parse(self, data, manager):
-        results = []
-        for d in data:
-            results.append(self.factory(d, manager))
-        return results
+        return [self.factory(d, manager) for d in data]
 
     def factory(self, data, manager=None):
         """Factory func for filters.
@@ -153,16 +152,12 @@ class FilterRegistry(PluginRegistry):
         else:
             filter_type = data.get('type')
         if not filter_type:
-            raise PolicyValidationError(
-                "%s Invalid Filter %s" % (
-                    self.plugin_type, data))
+            raise PolicyValidationError(f"{self.plugin_type} Invalid Filter {data}")
         filter_class = self.get(filter_type)
         if filter_class is not None:
             return filter_class(data, manager)
         else:
-            raise PolicyValidationError(
-                "%s Invalid filter type %s" % (
-                    self.plugin_type, data))
+            raise PolicyValidationError(f"{self.plugin_type} Invalid filter type {data}")
 
 
 # Really should be an abstract base class (abc) or
@@ -231,11 +226,7 @@ def intersect_list(a, b):
         return a
     elif a is None:
         return b
-    res = []
-    for x in a:
-        if x in b:
-            res.append(x)
-    return res
+    return [x for x in a if x in b]
 
 
 class BooleanGroupFilter(Filter):
@@ -261,10 +252,7 @@ class Or(BooleanGroupFilter):
 
     def __call__(self, r):
         """Fallback for older unit tests that don't utilize a query manager"""
-        for f in self.filters:
-            if f(r):
-                return True
-        return False
+        return any(f(r) for f in self.filters)
 
     def process_set(self, resources, event):
         resource_type = self.manager.get_model()
@@ -303,12 +291,7 @@ class Not(BooleanGroupFilter):
     def __call__(self, r):
         """Fallback for older unit tests that don't utilize a query manager"""
 
-        # There is an implicit 'and' for self.filters
-        # ~(A ^ B ^ ... ^ Z) = ~A v ~B v ... v ~Z
-        for f in self.filters:
-            if not f(r):
-                return True
-        return False
+        return any(not f(r) for f in self.filters)
 
     def process_set(self, resources, event):
         resource_type = self.manager.get_model()
@@ -321,7 +304,7 @@ class Not(BooleanGroupFilter):
                 break
 
         before = set(resource_map.keys())
-        after = set([r[resource_type.id] for r in resources])
+        after = {r[resource_type.id] for r in resources}
         results = before - after
         sweeper.sweep([])
 
@@ -397,19 +380,17 @@ class ValueFilter(Filter):
         """
         for field in ('op', 'value'):
             if field not in self.data:
-                raise PolicyValidationError(
-                    "Missing '%s' in value filter %s" % (field, self.data))
+                raise PolicyValidationError(f"Missing '{field}' in value filter {self.data}")
 
-        if not (isinstance(self.data['value'], int) or
-                isinstance(self.data['value'], list)):
+        if not (isinstance(self.data['value'], (int, list))):
             raise PolicyValidationError(
-                "`value` must be an integer in resource_count filter %s" % self.data)
+                f"`value` must be an integer in resource_count filter {self.data}"
+            )
 
         # I don't see how to support regex for this?
         if (self.data['op'] not in OPERATORS or self.data['op'] in {'regex', 'regex-case'} or
                 'value_regex' in self.data):
-            raise PolicyValidationError(
-                "Invalid operator in value filter %s" % self.data)
+            raise PolicyValidationError(f"Invalid operator in value filter {self.data}")
 
         return self
 
@@ -427,28 +408,21 @@ class ValueFilter(Filter):
                     "value_type: date with invalid date value:%s",
                     self.data.get('value', ''))
         if 'key' not in self.data and 'key' in self.required_keys:
-            raise PolicyValidationError(
-                "Missing 'key' in value filter %s" % self.data)
+            raise PolicyValidationError(f"Missing 'key' in value filter {self.data}")
         if ('value' not in self.data and
                 'value_from' not in self.data and
                 'value' in self.required_keys):
-            raise PolicyValidationError(
-                "Missing 'value' in value filter %s" % self.data)
+            raise PolicyValidationError(f"Missing 'value' in value filter {self.data}")
         if 'op' in self.data:
-            if not self.data['op'] in OPERATORS:
-                raise PolicyValidationError(
-                    "Invalid operator in value filter %s" % self.data)
+            if self.data['op'] not in OPERATORS:
+                raise PolicyValidationError(f"Invalid operator in value filter {self.data}")
             if self.data['op'] in {'regex', 'regex-case'}:
                 # Sanity check that we can compile
                 try:
                     re.compile(self.data['value'])
                 except re.error as e:
-                    raise PolicyValidationError(
-                        "Invalid regex: %s %s" % (e, self.data))
-        if 'value_regex' in self.data:
-            return self._validate_value_regex()
-
-        return self
+                    raise PolicyValidationError(f"Invalid regex: {e} {self.data}")
+        return self._validate_value_regex() if 'value_regex' in self.data else self
 
     def _validate_value_regex(self):
         """Specific validation for `value_regex` type
@@ -463,11 +437,10 @@ class ValueFilter(Filter):
             pattern = re.compile(self.data['value_regex'])
             if pattern.groups != 1:
                 raise PolicyValidationError(
-                    "value_regex must have a single capturing group: %s" %
-                    self.data)
+                    f"value_regex must have a single capturing group: {self.data}"
+                )
         except re.error as e:
-            raise PolicyValidationError(
-                "Invalid value_regex: %s %s" % (e, self.data))
+            raise PolicyValidationError(f"Invalid value_regex: {e} {self.data}")
         return self
 
     def __call__(self, i):
@@ -483,10 +456,7 @@ class ValueFilter(Filter):
         # For the resource_count filter we operate on the full set of resources.
         if self.data.get('value_type') == 'resource_count':
             op = OPERATORS[self.data.get('op')]
-            if op(len(resources), self.data.get('value')):
-                return resources
-            return []
-
+            return resources if op(len(resources), self.data.get('value')) else []
         return super(ValueFilter, self).process(resources, event)
 
     def get_resource_value(self, k, i):
@@ -613,13 +583,10 @@ class ValueFilter(Filter):
                 return v, s
             return s, v
         elif self.vtype == 'cidr_size':
-            cidr = parse_cidr(value)
-            if cidr:
+            if cidr := parse_cidr(value):
                 return sentinel, cidr.prefixlen
             return sentinel, 0
 
-        # Allows for expiration filtering, for events in the future as opposed
-        # to events in the past which age filtering allows for.
         elif self.vtype == 'expiration':
             if not isinstance(sentinel, datetime.datetime):
                 sentinel = datetime.datetime.now(tz=tzutc()) + timedelta(sentinel)
@@ -669,10 +636,7 @@ class AgeFilter(Filter):
             hours = self.data.get('hours', 0)
             minutes = self.data.get('minutes', 0)
             # Work around placebo issues with tz
-            if v.tzinfo:
-                n = datetime.datetime.now(tz=tzutc())
-            else:
-                n = datetime.datetime.now()
+            n = datetime.datetime.now(tz=tzutc()) if v.tzinfo else datetime.datetime.now()
             self.threshold_date = n - timedelta(days=days, hours=hours, minutes=minutes)
 
         return op(self.threshold_date, v)
@@ -687,16 +651,14 @@ class EventFilter(ValueFilter):
     def validate(self):
         if 'mode' not in self.manager.data:
             raise PolicyValidationError(
-                "Event filters can only be used with lambda policies in %s" % (
-                    self.manager.data,))
+                f"Event filters can only be used with lambda policies in {self.manager.data}"
+            )
         return self
 
     def process(self, resources, event=None):
         if event is None:
             return resources
-        if self(event):
-            return resources
-        return []
+        return resources if self(event) else []
 
 
 def cast_tz(d, tz):
@@ -712,10 +674,7 @@ def parse_date(v, tz=None):
     tz = tz or tzutc()
 
     if isinstance(v, datetime.datetime):
-        if v.tzinfo is None:
-            return cast_tz(v, tz)
-        return v
-
+        return cast_tz(v, tz) if v.tzinfo is None else v
     if isinstance(v, six.string_types):
         try:
             return cast_tz(parse(v), tz)
@@ -762,9 +721,7 @@ class ValueRegex(object):
             capture = re.match(self.expr, resource)
         except (ValueError, TypeError):
             return None
-        if capture is None:  # regex didn't capture anything
-            return None
-        return capture.group(1)
+        return None if capture is None else capture[1]
 
 
 class StateTransitionFilter(Filter):

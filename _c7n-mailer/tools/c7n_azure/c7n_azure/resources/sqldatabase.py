@@ -99,26 +99,21 @@ class BackupRetentionPolicyHelper(object):
     def get_backup_retention_policy(database, get_operation, cache_key):
 
         policy_key = get_annotation_prefix(cache_key)
-        cached_policy = database.get(policy_key)
-        if cached_policy:
+        if cached_policy := database.get(policy_key):
             return cached_policy
 
         resource_group_name, server_name, database_name = \
-            BackupRetentionPolicyHelper.get_backup_retention_policy_context(database)
+                BackupRetentionPolicyHelper.get_backup_retention_policy_context(database)
 
         try:
             response = get_operation(resource_group_name, server_name, database_name)
         except CloudError as e:
             if e.status_code == 404:
                 return None
-            else:
-                log.error(
-                    "Unable to get backup retention policy. "
-                    "(resourceGroup: {}, sqlserver: {}, sqldatabase: {})".format(
-                        resource_group_name, server_name, database_name
-                    )
-                )
-                raise e
+            log.error(
+                f"Unable to get backup retention policy. (resourceGroup: {resource_group_name}, sqlserver: {server_name}, sqldatabase: {database_name})"
+            )
+            raise e
 
         retention_policy = response.as_dict()
         database[policy_key] = retention_policy
@@ -162,8 +157,7 @@ class BackupRetentionPolicyBaseFilter(Filter):
         matched_resources = []
 
         for resource in resources:
-            match = self._process_resource(resource, get_operation)
-            if match:
+            if match := self._process_resource(resource, get_operation):
                 matched_resources.append(resource)
         return matched_resources
 
@@ -365,12 +359,9 @@ class ShortTermBackupRetentionPolicyAction(BackupRetentionPolicyBaseAction):
 
     def validate(self):
         if self.retention_period_days not in \
-                ShortTermBackupRetentionPolicyAction.VALID_RETENTION_PERIOD_DAYS:
+                    ShortTermBackupRetentionPolicyAction.VALID_RETENTION_PERIOD_DAYS:
             raise PolicyValidationError(
-                "Invalid retention-period-days: {}. Valid values are: {}".format(
-                    self.retention_period_days,
-                    ShortTermBackupRetentionPolicyAction.VALID_RETENTION_PERIOD_DAYS
-                )
+                f"Invalid retention-period-days: {self.retention_period_days}. Valid values are: {ShortTermBackupRetentionPolicyAction.VALID_RETENTION_PERIOD_DAYS}"
             )
         return self
 
@@ -522,7 +513,9 @@ class Resize(AzureBaseAction):
 
     def _process_resource(self, database):
         sku = Sku(capacity=self.capacity, tier=self.tier, name=self.tier)
-        max_size_bytes = self.max_size_bytes if not 0 else database['properties']['maxSizeBytes']
+        max_size_bytes = (
+            database['properties']['maxSizeBytes'] if 0 else self.max_size_bytes
+        )
         self.client.databases.update(
             database['resourceGroup'],
             ResourceIdParser.get_resource_name(database['c7n:parent-id']),

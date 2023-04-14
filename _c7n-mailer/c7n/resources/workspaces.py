@@ -76,12 +76,10 @@ class WorkspaceConnectionStatusFilter(ValueFilter):
     annotation_key = 'c7n:ConnectionStatus'
 
     def get_connection_status(self, client, workspace_ids):
-        connection_status_chunk = self.manager.retry(
+        return self.manager.retry(
             client.describe_workspaces_connection_status,
-            WorkspaceIds=workspace_ids
+            WorkspaceIds=workspace_ids,
         )['WorkspacesConnectionStatus']
-
-        return connection_status_chunk
 
     def process(self, resources, event=None):
         client = local_session(self.manager.session_factory).client('workspaces')

@@ -116,11 +116,7 @@ class StorageUtilities(object):
 
         path_parts = parts.path.strip('/').split('/', 1)
         container_name = path_parts[0]
-        if len(path_parts) > 1:
-            prefix = path_parts[1]
-        else:
-            prefix = ""
-
+        prefix = path_parts[1] if len(path_parts) > 1 else ""
         token = StorageUtilities.get_storage_token(session)
 
         Storage = namedtuple('Storage', 'container_name, storage_name, token, file_prefix')
